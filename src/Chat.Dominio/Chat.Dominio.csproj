@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Chat.Dominio</RootNamespace>
+    <AssemblyName>Chat.Dominio</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Única dependencia del dominio: los tipos base de ASP.NET Core Identity
+      (IdentityUser / IdentityRole). Es un paquete de abstracciones, sin EF Core
+      ni ASP.NET Core, por lo que el dominio sigue siendo independiente de la
+      infraestructura y de la capa de presentación.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Stores" />
+  </ItemGroup>
+
+</Project>

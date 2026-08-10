@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Chat.Aplicacion</RootNamespace>
+    <AssemblyName>Chat.Aplicacion</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Chat.Dominio\Chat.Dominio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Abstracciones de inyección de dependencias, opciones y registro. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <!-- LINQ sin asignaciones para las proyecciones que se ejecutan en cada petición. -->
+    <PackageReference Include="ZLinq" />
+  </ItemGroup>
+
+</Project>
