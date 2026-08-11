@@ -98,12 +98,15 @@ public sealed class AlmacenObjetosS3 : IAlmacenObjetos, IDisposable
             InputStream = contenido,
             ContentType = tipoMime,
 
-            // El flujo cifrado no admite búsqueda ni conoce su longitud, así que hay
-            // que decirle al SDK cuánto va a recibir y que no intente calcular el
-            // resumen por adelantado, lo que le obligaría a leerlo dos veces.
+            // El flujo cifrado no admite búsqueda ni conoce su longitud por
+            // adelantado, así que hay que decirle al SDK cuánto va a recibir. Con
+            // envío troceado (aws-chunked) el SDK firma cada fragmento sobre la
+            // marcha sin necesitar releer ni buscar en el flujo; es la alternativa a
+            // "DisablePayloadSigning", que el propio SDK rechaza salvo que el
+            // almacén hable HTTPS, y MinIO se habla en claro dentro de la red interna
+            // del compose.
             AutoCloseStream = false,
-            UseChunkEncoding = false,
-            DisablePayloadSigning = true,
+            UseChunkEncoding = true,
             Headers = { ContentLength = tamano }
         };
 
