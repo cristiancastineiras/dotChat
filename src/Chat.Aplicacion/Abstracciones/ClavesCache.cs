@@ -17,8 +17,7 @@ public static class ClavesCache
 
     /// <summary>Clave del listado completo de usuarios.</summary>
     /// <param name="incluirInactivos">Variante del listado solicitada.</param>
-    public static string ListaUsuarios(bool incluirInactivos)
-        => $"usuarios:lista:{(incluirInactivos ? "todos" : "activos")}";
+    public static string ListaUsuarios(bool incluirInactivos) => $"usuarios:lista:{(incluirInactivos ? "todos" : "activos")}";
 
     /// <summary>Clave de la ficha de un usuario.</summary>
     /// <param name="usuarioId">Identificador del usuario.</param>

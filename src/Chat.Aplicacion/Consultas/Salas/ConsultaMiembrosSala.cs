@@ -55,10 +55,16 @@ public sealed class ManejadorMiembrosSala
 
         var miembros = await _salas.ListarMiembrosAsync(salaId, cancelacion).ConfigureAwait(false);
 
+        // La presencia de todos los miembros se resuelve de una vez: con el registro
+        // compartido, preguntar uno a uno sería una ida y vuelta por miembro.
+        var conectados = await _conexiones
+            .FiltrarConectadosAsync([.. miembros.Select(miembro => miembro.UsuarioId)], cancelacion)
+            .ConfigureAwait(false);
+
         return miembros
             .AsValueEnumerable()
             .Select(miembro => miembro.ADto(
-                _conexiones.EstaConectado(miembro.UsuarioId),
+                conectados.Contains(miembro.UsuarioId),
                 sala.CreadorId == miembro.UsuarioId))
             .ToArray();
     }

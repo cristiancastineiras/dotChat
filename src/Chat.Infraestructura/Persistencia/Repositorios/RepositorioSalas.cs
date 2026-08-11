@@ -18,10 +18,14 @@ public sealed class RepositorioSalas : IRepositorioSalas
         => _contexto.Salas.FirstOrDefaultAsync(s => s.Id == id, cancelacion);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// La igualdad basta para buscar sin distinguir mayúsculas ni acentos: la columna
+    /// <c>Nombre</c> usa una intercalación no determinista, de modo que la comparación
+    /// la resuelve PostgreSQL con el índice único y no hace falta ni <c>LIKE</c> ni
+    /// normalizar el valor en el cliente.
+    /// </remarks>
     public Task<Sala?> ObtenerPorNombreAsync(string nombre, CancellationToken cancelacion = default)
-        => _contexto.Salas.FirstOrDefaultAsync(
-            s => EF.Functions.Like(s.Nombre, nombre),
-            cancelacion);
+        => _contexto.Salas.FirstOrDefaultAsync(s => s.Nombre == nombre, cancelacion);
 
     /// <inheritdoc />
     public Task<Sala?> ObtenerPorClaveDirectaAsync(string claveDirecta, CancellationToken cancelacion = default)

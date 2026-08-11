@@ -56,6 +56,8 @@ public sealed class Despachador : IDespachador
         // Sin receptores de telemetría escuchando, StartActivity devuelve null y
         // el coste de este bloque es una comprobación de referencia nula.
         using var actividad = TrazasAplicacion.Fuente.StartActivity(datos.NombreActividad);
+        actividad?.SetTag("cqrs.mensaje", datos.NombreMensaje);
+        actividad?.SetTag("cqrs.tipo", datos.EsComando ? "comando" : "consulta");
 
         try
         {
@@ -74,7 +76,14 @@ public sealed class Despachador : IDespachador
     /// <param name="TipoManejador">Tipo cerrado de la interfaz del manejador.</param>
     /// <param name="Metodo">Método <c>ManejarAsync</c> a invocar.</param>
     /// <param name="NombreActividad">Nombre de la traza asociada al mensaje.</param>
-    private sealed record DatosManejador(Type TipoManejador, MethodInfo Metodo, string NombreActividad)
+    /// <param name="NombreMensaje">Nombre del comando o consulta, para etiquetar la traza.</param>
+    /// <param name="EsComando">Indica si el mensaje modifica estado.</param>
+    private sealed record DatosManejador(
+        Type TipoManejador,
+        MethodInfo Metodo,
+        string NombreActividad,
+        string NombreMensaje,
+        bool EsComando)
     {
         /// <summary>Construye los metadatos a partir de los tipos implicados.</summary>
         /// <param name="tipoManejadorAbierto">Interfaz genérica abierta del manejador.</param>
@@ -86,7 +95,14 @@ public sealed class Despachador : IDespachador
             var metodo = tipoManejador.GetMethod("ManejarAsync", BindingFlags.Public | BindingFlags.Instance)
                 ?? throw new InvalidOperationException($"El manejador '{tipoManejador.Name}' no expone 'ManejarAsync'.");
 
-            return new DatosManejador(tipoManejador, metodo, $"cqrs {tipoMensaje.Name}");
+            var esComando = tipoManejadorAbierto == typeof(IManejadorComando<,>);
+
+            return new DatosManejador(
+                tipoManejador,
+                metodo,
+                $"cqrs {tipoMensaje.Name}",
+                tipoMensaje.Name,
+                esComando);
         }
     }
 }

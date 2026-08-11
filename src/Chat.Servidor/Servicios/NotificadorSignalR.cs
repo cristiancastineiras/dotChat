@@ -64,7 +64,9 @@ public sealed class NotificadorSignalR : INotificadorTiempoReal
         // en el momento de entrar.
         var grupo = ChatHub.NombreGrupo(sala.Id);
 
-        foreach (var conexionId in _conexiones.ConexionesDe(usuarioId))
+        var conexiones = await _conexiones.ConexionesDeAsync(usuarioId, cancelacion).ConfigureAwait(false);
+
+        foreach (var conexionId in conexiones)
         {
             await _hub.Groups.AddToGroupAsync(conexionId, grupo, cancelacion).ConfigureAwait(false);
         }

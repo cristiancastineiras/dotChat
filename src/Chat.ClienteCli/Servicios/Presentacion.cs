@@ -1,5 +1,6 @@
 using System.Globalization;
 using Chat.Aplicacion.Dtos;
+using Chat.Aplicacion.Mensajeria;
 using Chat.Dominio.Entidades;
 using Cysharp.Text;
 using Spectre.Console;
@@ -252,10 +253,16 @@ public static class Presentacion
 
         foreach (var mensaje in mensajes)
         {
+            // En una tabla no se dibujan las imágenes: se anuncian con su ficha, que
+            // es lo que cabe en una celda sin romper la alineación de las columnas.
+            var contenido = mensaje.Adjunto is { } adjunto
+                ? $"{FichaAdjunto(adjunto)} {Escapar(mensaje.Texto)}".TrimEnd()
+                : Escapar(mensaje.Texto);
+
             tabla.AddRow(
                 $"[grey]{mensaje.FechaEnvio.ToLocalTime():yyyy-MM-dd HH:mm}[/]",
                 $"[{ColorDe(mensaje.NombreUsuario)}]{Escapar(mensaje.NombreUsuario)}[/]",
-                Escapar(mensaje.Texto));
+                contenido);
         }
 
         AnsiConsole.Write(tabla);
@@ -300,6 +307,11 @@ public static class Presentacion
         tabla.AddRow("[bold]/miembros[/]", "[grey]muestra quién está en la sala y quién está en línea[/]");
         tabla.AddRow("[bold]/historial[/]", "[grey]vuelve a cargar los mensajes recientes[/]");
         tabla.AddRow("[bold]/invitar[/] <usuario>", "[grey]incorpora a alguien a la sala[/]");
+        tabla.AddRow("[bold]/archivo[/] <ruta> [texto]", "[grey]comparte un archivo; las imágenes se dibujan solas[/]");
+        tabla.AddRow("[bold]/adjuntos[/]", "[grey]lista los archivos compartidos en la conversación[/]");
+        tabla.AddRow("[bold]/descargar[/] <n>", "[grey]guarda en disco el enésimo archivo (1 es el último)[/]");
+        tabla.AddRow("[bold]/ver[/] <n>", "[grey]vuelve a dibujar la enésima imagen recibida[/]");
+        tabla.AddRow("[bold]/emojis[/]", "[grey]lista los atajos :nombre: que se pueden escribir[/]");
         tabla.AddRow("[bold]/limpiar[/]", "[grey]borra la pantalla sin perder la conexión[/]");
         tabla.AddRow("[bold]/ayuda[/]", "[grey]muestra esta lista[/]");
 
@@ -329,10 +341,110 @@ public static class Presentacion
         constructor.Append(']');
         constructor.Append(Escapar(mensaje.NombreUsuario));
         constructor.Append("[/][grey]:[/] ");
+
+        if (mensaje.Adjunto is { } adjunto)
+        {
+            // La ficha se imprime siempre, se dibuje la imagen o no: deja constancia
+            // en el historial de qué se compartió y con qué tamaño.
+            constructor.Append(FichaAdjunto(adjunto));
+
+            if (mensaje.Texto.Length > 0)
+            {
+                constructor.Append(' ');
+            }
+        }
+
         constructor.Append(Escapar(mensaje.Texto));
 
         AnsiConsole.MarkupLine(constructor.ToString());
     }
+
+    /// <summary>Compone la ficha de un adjunto: icono, nombre, dimensiones y peso.</summary>
+    /// <param name="adjunto">Adjunto anunciado con el mensaje.</param>
+    public static string FichaAdjunto(AdjuntoDto adjunto)
+    {
+        ArgumentNullException.ThrowIfNull(adjunto);
+
+        var detalle = adjunto is { EsImagen: true, Ancho: { } ancho, Alto: { } alto }
+            ? $"{ancho}×{alto}, {FormatearTamano(adjunto.TamanoBytes)}"
+            : FormatearTamano(adjunto.TamanoBytes);
+
+        return ZString.Concat(
+            "[mediumpurple2]",
+            adjunto.EsImagen ? "🖼 " : "📎 ",
+            Escapar(adjunto.NombreArchivo),
+            "[/] [grey](",
+            detalle,
+            ")[/]");
+    }
+
+    /// <summary>Dibuja la lista de archivos compartidos en la conversación.</summary>
+    /// <param name="adjuntos">Adjuntos vistos, del más reciente al más antiguo.</param>
+    public static void TablaAdjuntos(IReadOnlyList<AdjuntoDto> adjuntos)
+    {
+        ArgumentNullException.ThrowIfNull(adjuntos);
+
+        if (adjuntos.Count == 0)
+        {
+            Aviso("Todavía no se ha compartido ningún archivo en esta conversación.");
+            return;
+        }
+
+        var tabla = NuevaTabla($"Archivos compartidos ({adjuntos.Count})");
+
+        tabla.AddColumn(new TableColumn("[bold]#[/]").RightAligned());
+        tabla.AddColumn("[bold]Archivo[/]");
+        tabla.AddColumn("[bold]Tipo[/]");
+        tabla.AddColumn(new TableColumn("[bold]Tamaño[/]").RightAligned());
+
+        for (var indice = 0; indice < adjuntos.Count; indice++)
+        {
+            var adjunto = adjuntos[indice];
+
+            tabla.AddRow(
+                $"[{ColorPrincipal}]{indice + 1}[/]",
+                $"{(adjunto.EsImagen ? "🖼" : "📎")} {Escapar(adjunto.NombreArchivo)}",
+                $"[grey]{Escapar(adjunto.TipoMime)}[/]",
+                $"[grey]{FormatearTamano(adjunto.TamanoBytes)}[/]");
+        }
+
+        AnsiConsole.Write(tabla);
+        AnsiConsole.MarkupLine(
+            "[grey]Use [bold]/descargar <n>[/] para guardar uno en disco " +
+            "o [bold]/ver <n>[/] para volver a dibujar una imagen.[/]");
+    }
+
+    /// <summary>Dibuja el catálogo de atajos de emoji agrupado por categoría.</summary>
+    public static void TablaEmojis()
+    {
+        var tabla = NuevaTabla($"Emojis disponibles ({CatalogoEmojis.Entradas.Count})");
+
+        tabla.AddColumn("[bold]Categoría[/]");
+        tabla.AddColumn("[bold]Atajos[/]");
+
+        foreach (var grupo in CatalogoEmojis.PorCategoria())
+        {
+            var atajos = string.Join(
+                "  ",
+                grupo.Select(entrada => $"{entrada.Simbolo} [grey]:{Escapar(entrada.Nombre)}:[/]"));
+
+            tabla.AddRow($"[{ColorPrincipal}]{Escapar(grupo.Key)}[/]", atajos);
+        }
+
+        AnsiConsole.Write(tabla);
+        AnsiConsole.MarkupLine(
+            "[grey]Escriba el atajo entre dos puntos —por ejemplo [bold]:fuego:[/]— y el servidor lo sustituye " +
+            "al enviar. También puede pegar el emoji directamente.[/]");
+    }
+
+    /// <summary>Expresa un tamaño en bytes con la unidad más legible.</summary>
+    /// <param name="bytes">Tamaño a formatear.</param>
+    public static string FormatearTamano(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KiB",
+        _ => $"{bytes / (1024.0 * 1024.0):0.#} MiB"
+    };
 
     /// <summary>Imprime un aviso del sistema dentro de la conversación.</summary>
     /// <param name="texto">Texto del aviso.</param>

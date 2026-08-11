@@ -5,42 +5,118 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace Chat.Infraestructura.Migraciones
 {
     [DbContext(typeof(ContextoChat))]
-    [Migration("20260810105922_MigracionInicial")]
+    [Migration("20260811124948_MigracionInicial")]
     partial class MigracionInicial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder
+                .HasAnnotation("Npgsql:CollationDefinition:insensible_mayusculas", "und-u-ks-level1,und-u-ks-level1,icu,False")
+                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Chat.Dominio.Entidades.Adjunto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("Alto")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Ancho")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ClaveObjeto")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Huella")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<string>("NombreArchivo")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("SalaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("TamanoBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TipoMime")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClaveObjeto")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Adjuntos_ClaveObjeto");
+
+                    b.HasIndex("FechaCreacion")
+                        .HasDatabaseName("IX_Adjuntos_FechaCreacion");
+
+                    b.HasIndex("SalaId")
+                        .HasDatabaseName("IX_Adjuntos_SalaId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("Adjuntos", (string)null);
+                });
 
             modelBuilder.Entity("Chat.Dominio.Entidades.Mensaje", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("FechaEnvio")
-                        .HasColumnType("INTEGER");
+                    b.Property<Guid?>("AdjuntoId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("FechaEnvio")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("SalaId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("TextoCifrado")
-                        .IsRequired()
                         .HasMaxLength(16384)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(16384)");
 
                     b.Property<Guid>("UsuarioId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AdjuntoId")
+                        .IsUnique();
 
                     b.HasIndex("UsuarioId")
                         .HasDatabaseName("IX_Mensajes_UsuarioId");
@@ -55,13 +131,16 @@ namespace Chat.Infraestructura.Migraciones
             modelBuilder.Entity("Chat.Dominio.Entidades.MiembroSala", b =>
                 {
                     b.Property<Guid>("SalaId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("UsuarioId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("FechaUnion")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("FechaUltimaLectura")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("FechaUnion")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("SalaId", "UsuarioId");
 
@@ -75,19 +154,19 @@ namespace Chat.Infraestructura.Migraciones
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("NormalizedName")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
                     b.HasKey("Id");
 
@@ -102,24 +181,40 @@ namespace Chat.Infraestructura.Migraciones
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClaveDirecta")
+                        .HasMaxLength(65)
+                        .HasColumnType("character varying(65)");
 
                     b.Property<Guid?>("CreadorId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Descripcion")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
-                    b.Property<long>("FechaCreacion")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FechaUltimaActividad")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
-                        .HasMaxLength(48)
-                        .HasColumnType("TEXT");
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)")
+                        .UseCollation("insensible_mayusculas");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClaveDirecta")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Salas_ClaveDirecta")
+                        .HasFilter("\"ClaveDirecta\" IS NOT NULL");
 
                     b.HasIndex("CreadorId");
 
@@ -130,6 +225,10 @@ namespace Chat.Infraestructura.Migraciones
                         .IsUnique()
                         .HasDatabaseName("IX_Salas_Nombre");
 
+                    b.HasIndex("Tipo", "FechaUltimaActividad")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Salas_Tipo_FechaUltimaActividad");
+
                     b.ToTable("Salas", (string)null);
                 });
 
@@ -137,24 +236,24 @@ namespace Chat.Infraestructura.Migraciones
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("FechaCreacion")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long>("FechaExpiracion")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("FechaExpiracion")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long?>("FechaRevocacion")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("FechaRevocacion")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("HashToken")
                         .IsRequired()
                         .HasMaxLength(44)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(44)");
 
                     b.Property<Guid>("UsuarioId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -172,65 +271,65 @@ namespace Chat.Infraestructura.Migraciones
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("AccessFailedCount")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<bool>("Activo")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
+                        .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<bool>("EmailConfirmed")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
-                    b.Property<long>("FechaCreacion")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("FechaCreacion")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long?>("FechaUltimoAcceso")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("FechaUltimoAcceso")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("LockoutEnabled")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
-                    b.Property<long?>("LockoutEnd")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LockoutEnd")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("NormalizedUserName")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("PasswordHash")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("PhoneNumber")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<bool>("PhoneNumberConfirmed")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("SecurityStamp")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<bool>("TwoFactorEnabled")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("UserName")
                         .HasMaxLength(256)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("character varying(256)");
 
                     b.HasKey("Id");
 
@@ -254,16 +353,18 @@ namespace Chat.Infraestructura.Migraciones
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("ClaimType")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ClaimValue")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -276,16 +377,18 @@ namespace Chat.Infraestructura.Migraciones
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("ClaimType")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ClaimValue")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -297,16 +400,16 @@ namespace Chat.Infraestructura.Migraciones
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<System.Guid>", b =>
                 {
                     b.Property<string>("LoginProvider")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ProviderKey")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ProviderDisplayName")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("LoginProvider", "ProviderKey");
 
@@ -318,10 +421,10 @@ namespace Chat.Infraestructura.Migraciones
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("RoleId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("UserId", "RoleId");
 
@@ -333,24 +436,48 @@ namespace Chat.Infraestructura.Migraciones
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
                 {
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("LoginProvider")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Value")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Chat.Dominio.Entidades.Adjunto", b =>
+                {
+                    b.HasOne("Chat.Dominio.Entidades.Sala", "Sala")
+                        .WithMany()
+                        .HasForeignKey("SalaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Chat.Dominio.Entidades.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Sala");
+
+                    b.Navigation("Usuario");
+                });
+
             modelBuilder.Entity("Chat.Dominio.Entidades.Mensaje", b =>
                 {
+                    b.HasOne("Chat.Dominio.Entidades.Adjunto", "Adjunto")
+                        .WithOne("Mensaje")
+                        .HasForeignKey("Chat.Dominio.Entidades.Mensaje", "AdjuntoId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Chat.Dominio.Entidades.Sala", "Sala")
                         .WithMany("Mensajes")
                         .HasForeignKey("SalaId")
@@ -362,6 +489,8 @@ namespace Chat.Infraestructura.Migraciones
                         .HasForeignKey("UsuarioId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Adjunto");
 
                     b.Navigation("Sala");
 
@@ -457,6 +586,11 @@ namespace Chat.Infraestructura.Migraciones
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Chat.Dominio.Entidades.Adjunto", b =>
+                {
+                    b.Navigation("Mensaje");
                 });
 
             modelBuilder.Entity("Chat.Dominio.Entidades.Sala", b =>

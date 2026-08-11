@@ -23,7 +23,7 @@ namespace Chat.Infraestructura.Seguridad;
 /// </para>
 /// <para>La clave se toma siempre de la configuración; nunca está en el código.</para>
 /// </remarks>
-public sealed class ServicioCifradorMensajes : ICifradorMensajes, IDisposable
+public sealed class ServicioCifradorMensajes : ICifradorMensajes, ICifradorFlujo, IDisposable
 {
     /// <summary>Versión del formato de criptograma; permite migrar el esquema en el futuro.</summary>
     private const byte VersionFormato = 1;
@@ -37,8 +37,12 @@ public sealed class ServicioCifradorMensajes : ICifradorMensajes, IDisposable
     /// <summary>Tamaño de clave exigido: 256 bits.</summary>
     private const int TamanoClave = 32;
 
+    /// <summary>Sufijo que distingue el contexto asociado del contenido binario.</summary>
+    private const string SufijoContextoBinario = ":binario";
+
     private readonly AesGcm _aes;
     private readonly byte[] _datosAsociados;
+    private readonly byte[] _datosAsociadosBinarios;
     private bool _liberado;
 
     /// <summary>Crea el cifrador a partir de la configuración.</summary>
@@ -53,6 +57,7 @@ public sealed class ServicioCifradorMensajes : ICifradorMensajes, IDisposable
 
         _aes = new AesGcm(clave, TamanoEtiqueta);
         _datosAsociados = Encoding.UTF8.GetBytes(configuracion.ContextoAsociado);
+        _datosAsociadosBinarios = Encoding.UTF8.GetBytes(configuracion.ContextoAsociado + SufijoContextoBinario);
 
         // La copia local de la clave deja de ser necesaria en cuanto AesGcm la asume.
         CryptographicOperations.ZeroMemory(clave);
@@ -62,30 +67,23 @@ public sealed class ServicioCifradorMensajes : ICifradorMensajes, IDisposable
     public string Cifrar(string textoPlano)
     {
         ArgumentNullException.ThrowIfNull(textoPlano);
-        ObjectDisposedException.ThrowIf(_liberado, this);
 
         var bytesPlanos = Encoding.UTF8.GetBytes(textoPlano);
-        var salida = new byte[1 + TamanoNonce + TamanoEtiqueta + bytesPlanos.Length];
 
-        salida[0] = VersionFormato;
-
-        var nonce = salida.AsSpan(1, TamanoNonce);
-        var etiqueta = salida.AsSpan(1 + TamanoNonce, TamanoEtiqueta);
-        var cifrado = salida.AsSpan(1 + TamanoNonce + TamanoEtiqueta);
-
-        RandomNumberGenerator.Fill(nonce);
-        _aes.Encrypt(nonce, bytesPlanos, cifrado, etiqueta, _datosAsociados);
-
-        CryptographicOperations.ZeroMemory(bytesPlanos);
-
-        return Convert.ToBase64String(salida);
+        try
+        {
+            return Convert.ToBase64String(Sellar(bytesPlanos, _datosAsociados));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytesPlanos);
+        }
     }
 
     /// <inheritdoc />
     public string Descifrar(string textoCifrado)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(textoCifrado);
-        ObjectDisposedException.ThrowIf(_liberado, this);
 
         byte[] entrada;
         try
@@ -97,28 +95,16 @@ public sealed class ServicioCifradorMensajes : ICifradorMensajes, IDisposable
             throw new CryptographicException("El criptograma no está codificado en Base64 válido.", excepcion);
         }
 
-        if (entrada.Length < 1 + TamanoNonce + TamanoEtiqueta)
+        var bytesPlanos = Abrir(entrada, _datosAsociados);
+
+        try
         {
-            throw new CryptographicException("El criptograma está truncado o no tiene el formato esperado.");
+            return Encoding.UTF8.GetString(bytesPlanos);
         }
-
-        if (entrada[0] != VersionFormato)
+        finally
         {
-            throw new CryptographicException($"Versión de criptograma no soportada: {entrada[0]}.");
+            CryptographicOperations.ZeroMemory(bytesPlanos);
         }
-
-        var nonce = entrada.AsSpan(1, TamanoNonce);
-        var etiqueta = entrada.AsSpan(1 + TamanoNonce, TamanoEtiqueta);
-        var cifrado = entrada.AsSpan(1 + TamanoNonce + TamanoEtiqueta);
-        var bytesPlanos = new byte[cifrado.Length];
-
-        // Lanza CryptographicException si la etiqueta no cuadra: dato manipulado o clave distinta.
-        _aes.Decrypt(nonce, cifrado, etiqueta, bytesPlanos, _datosAsociados);
-
-        var resultado = Encoding.UTF8.GetString(bytesPlanos);
-        CryptographicOperations.ZeroMemory(bytesPlanos);
-
-        return resultado;
     }
 
     /// <inheritdoc />
@@ -134,6 +120,109 @@ public sealed class ServicioCifradorMensajes : ICifradorMensajes, IDisposable
             textoPlano = null;
             return false;
         }
+    }
+
+    /// <inheritdoc />
+    public byte[] CifrarBinario(ReadOnlySpan<byte> datosPlanos) => Sellar(datosPlanos, _datosAsociadosBinarios);
+
+    /// <inheritdoc />
+    public bool IntentarDescifrarBinario(byte[] datosCifrados, out byte[]? datosPlanos)
+    {
+        ArgumentNullException.ThrowIfNull(datosCifrados);
+
+        try
+        {
+            datosPlanos = Abrir(datosCifrados, _datosAsociadosBinarios);
+            return true;
+        }
+        catch (Exception excepcion) when (excepcion is CryptographicException or ArgumentException)
+        {
+            datosPlanos = null;
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public Stream Cifrar(Stream claro)
+    {
+        ObjectDisposedException.ThrowIf(_liberado, this);
+        return new FlujoCifrador(claro, _aes, _datosAsociadosBinarios);
+    }
+
+    /// <inheritdoc />
+    public Stream Descifrar(Stream cifrado)
+    {
+        ObjectDisposedException.ThrowIf(_liberado, this);
+        return new FlujoDescifrador(cifrado, _aes, _datosAsociadosBinarios);
+    }
+
+    /// <inheritdoc />
+    public long CalcularTamanoCifrado(long tamanoEnClaro)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(tamanoEnClaro);
+
+        // Siempre hay un marco más de los que salen de la división: el que cierra el
+        // flujo, que va vacío cuando el tamaño es múltiplo exacto del marco.
+        var marcos = (tamanoEnClaro / FormatoFlujoCifrado.TamanoMarco) + 1;
+
+        return FormatoFlujoCifrado.TamanoCabecera
+            + (marcos * FormatoFlujoCifrado.TamanoCabeceraMarco)
+            + tamanoEnClaro;
+    }
+
+    /// <summary>
+    /// Construye el criptograma completo: versión, nonce aleatorio, etiqueta de
+    /// autenticación y datos cifrados, en un único búfer.
+    /// </summary>
+    /// <param name="planos">Contenido original.</param>
+    /// <param name="datosAsociados">Contexto que se autentica junto al contenido.</param>
+    private byte[] Sellar(ReadOnlySpan<byte> planos, byte[] datosAsociados)
+    {
+        ObjectDisposedException.ThrowIf(_liberado, this);
+
+        var salida = new byte[1 + TamanoNonce + TamanoEtiqueta + planos.Length];
+        salida[0] = VersionFormato;
+
+        var nonce = salida.AsSpan(1, TamanoNonce);
+        var etiqueta = salida.AsSpan(1 + TamanoNonce, TamanoEtiqueta);
+        var cifrado = salida.AsSpan(1 + TamanoNonce + TamanoEtiqueta);
+
+        RandomNumberGenerator.Fill(nonce);
+        _aes.Encrypt(nonce, planos, cifrado, etiqueta, datosAsociados);
+
+        return salida;
+    }
+
+    /// <summary>Comprueba el formato de un criptograma, verifica su etiqueta y lo descifra.</summary>
+    /// <param name="entrada">Criptograma completo.</param>
+    /// <param name="datosAsociados">Contexto con el que se selló.</param>
+    /// <exception cref="CryptographicException">
+    /// Si el criptograma está truncado, usa otra versión de formato, se manipuló o
+    /// se cifró con otra clave o en otro contexto.
+    /// </exception>
+    private byte[] Abrir(ReadOnlySpan<byte> entrada, byte[] datosAsociados)
+    {
+        ObjectDisposedException.ThrowIf(_liberado, this);
+
+        if (entrada.Length < 1 + TamanoNonce + TamanoEtiqueta)
+        {
+            throw new CryptographicException("El criptograma está truncado o no tiene el formato esperado.");
+        }
+
+        if (entrada[0] != VersionFormato)
+        {
+            throw new CryptographicException($"Versión de criptograma no soportada: {entrada[0]}.");
+        }
+
+        var nonce = entrada.Slice(1, TamanoNonce);
+        var etiqueta = entrada.Slice(1 + TamanoNonce, TamanoEtiqueta);
+        var cifrado = entrada[(1 + TamanoNonce + TamanoEtiqueta)..];
+        var planos = new byte[cifrado.Length];
+
+        // Lanza CryptographicException si la etiqueta no cuadra: dato manipulado o clave distinta.
+        _aes.Decrypt(nonce, cifrado, etiqueta, planos, datosAsociados);
+
+        return planos;
     }
 
     /// <inheritdoc />

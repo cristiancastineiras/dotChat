@@ -25,4 +25,14 @@ public sealed class OpcionesCliente
     /// local contra un certificado autofirmado que no esté en el almacén de confianza.
     /// </summary>
     public bool AceptarCertificadosNoConfiables { get; set; }
+
+    /// <summary>
+    /// Dibuja las imágenes recibidas dentro de la conversación. Al desactivarlo, de
+    /// cada imagen solo se anuncia la ficha y se puede pedir a mano con «/ver».
+    /// </summary>
+    public bool MostrarImagenesEnLinea { get; set; } = true;
+
+    /// <summary>Anchura máxima, en columnas de la consola, con la que se dibujan las imágenes.</summary>
+    [Range(8, 200, ErrorMessage = "La anchura de las imágenes debe estar entre 8 y 200 columnas.")]
+    public int ColumnasImagen { get; set; } = 48;
 }

@@ -33,12 +33,16 @@ public static class Proyecciones
     /// </param>
     /// <param name="esMiembro">Indica si quien consulta pertenece a la sala.</param>
     /// <param name="mensajesSinLeer">Mensajes pendientes para quien consulta.</param>
+    /// <param name="ultimoMensaje">Previsualización del último mensaje.</param>
+    /// <param name="interlocutorEnLinea">Presencia del interlocutor en una conversación directa.</param>
     public static SalaDto ADto(
         this Sala sala,
         int totalMiembros,
         string? nombreVisible = null,
         bool esMiembro = false,
-        int mensajesSinLeer = 0) => new(
+        int mensajesSinLeer = 0,
+        ResumenMensajeDto? ultimoMensaje = null,
+        bool? interlocutorEnLinea = null) => new(
         sala.Id,
         nombreVisible ?? sala.Nombre,
         sala.Descripcion,
@@ -47,7 +51,9 @@ public static class Proyecciones
         sala.FechaUltimaActividad,
         totalMiembros,
         esMiembro,
-        mensajesSinLeer);
+        mensajesSinLeer,
+        ultimoMensaje,
+        interlocutorEnLinea);
 
     /// <summary>Proyecta la membresía de una sala junto con la presencia del usuario.</summary>
     /// <param name="miembro">Entidad de origen, con su usuario cargado.</param>
@@ -61,18 +67,40 @@ public static class Proyecciones
         esCreador);
 
     /// <summary>Proyecta un mensaje ya descifrado a su representación pública.</summary>
-    /// <param name="mensaje">Entidad de origen.</param>
-    /// <param name="texto">Texto en claro obtenido del cifrador.</param>
+    /// <param name="mensaje">Entidad de origen, con su adjunto cargado si lo tiene.</param>
+    /// <param name="texto">Texto en claro obtenido del cifrador; vacío si no hay.</param>
     /// <param name="nombreSala">Nombre de la sala.</param>
     /// <param name="nombreUsuario">Nombre del autor.</param>
-    public static MensajeDto ADto(this Mensaje mensaje, string texto, string nombreSala, string nombreUsuario) => new(
-        mensaje.Id,
-        mensaje.SalaId,
-        nombreSala,
-        mensaje.UsuarioId,
-        nombreUsuario,
-        texto,
-        mensaje.FechaEnvio);
+    public static MensajeDto ADto(this Mensaje mensaje, string texto, string nombreSala, string nombreUsuario)
+    {
+        ArgumentNullException.ThrowIfNull(mensaje);
+
+        return new MensajeDto(
+            mensaje.Id,
+            mensaje.SalaId,
+            nombreSala,
+            mensaje.UsuarioId,
+            nombreUsuario,
+            texto,
+            mensaje.FechaEnvio,
+            mensaje.Adjunto?.ADto());
+    }
+
+    /// <summary>Proyecta los metadatos de un adjunto. El binario nunca entra en el DTO.</summary>
+    /// <param name="adjunto">Entidad de origen.</param>
+    public static AdjuntoDto ADto(this Adjunto adjunto)
+    {
+        ArgumentNullException.ThrowIfNull(adjunto);
+
+        return new AdjuntoDto(
+            adjunto.Id,
+            adjunto.NombreArchivo,
+            adjunto.TipoMime,
+            adjunto.Tipo,
+            adjunto.TamanoBytes,
+            adjunto.Ancho,
+            adjunto.Alto);
+    }
 
     /// <summary>
     /// Nombre de sala que acompaña a un mensaje. En una conversación directa el

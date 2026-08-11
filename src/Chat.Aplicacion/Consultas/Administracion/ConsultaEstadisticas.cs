@@ -14,6 +14,7 @@ public sealed class ManejadorEstadisticas : IManejadorConsulta<ConsultaEstadisti
     private readonly IRepositorioUsuarios _usuarios;
     private readonly IRepositorioSalas _salas;
     private readonly IRepositorioMensajes _mensajes;
+    private readonly IRepositorioAdjuntos _adjuntos;
     private readonly IRegistroConexiones _conexiones;
     private readonly IProveedorFechaHora _reloj;
 
@@ -22,12 +23,14 @@ public sealed class ManejadorEstadisticas : IManejadorConsulta<ConsultaEstadisti
         IRepositorioUsuarios usuarios,
         IRepositorioSalas salas,
         IRepositorioMensajes mensajes,
+        IRepositorioAdjuntos adjuntos,
         IRegistroConexiones conexiones,
         IProveedorFechaHora reloj)
     {
         _usuarios = usuarios;
         _salas = salas;
         _mensajes = mensajes;
+        _adjuntos = adjuntos;
         _conexiones = conexiones;
         _reloj = reloj;
     }
@@ -39,18 +42,25 @@ public sealed class ManejadorEstadisticas : IManejadorConsulta<ConsultaEstadisti
     {
         ArgumentNullException.ThrowIfNull(consulta);
 
-        // Las tres cuentas comparten el mismo DbContext, que no admite consultas
+        // Las cuentas comparten el mismo DbContext, que no admite consultas
         // concurrentes: se ejecutan de forma secuencial de manera deliberada.
         var totalUsuarios = await _usuarios.ContarAsync(cancelacion).ConfigureAwait(false);
         var totalSalas = await _salas.ContarAsync(cancelacion).ConfigureAwait(false);
         var totalMensajes = await _mensajes.ContarAsync(null, cancelacion).ConfigureAwait(false);
+        var totalAdjuntos = await _adjuntos.ContarAsync(cancelacion).ConfigureAwait(false);
+        var bytesAdjuntos = await _adjuntos.SumarTamanoAsync(cancelacion).ConfigureAwait(false);
+
+        var conexiones = await _conexiones.ContarConexionesAsync(cancelacion).ConfigureAwait(false);
+        var conectados = await _conexiones.ContarUsuariosConectadosAsync(cancelacion).ConfigureAwait(false);
 
         return new EstadisticasDto(
             totalUsuarios,
             totalSalas,
             totalMensajes,
-            _conexiones.TotalConexiones,
-            _conexiones.TotalUsuariosConectados,
+            totalAdjuntos,
+            bytesAdjuntos,
+            conexiones,
+            conectados,
             _reloj.Ahora);
     }
 }

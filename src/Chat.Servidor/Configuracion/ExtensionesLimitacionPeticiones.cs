@@ -17,6 +17,12 @@ public static class ExtensionesLimitacionPeticiones
     /// <summary>Política general aplicada al resto de la API.</summary>
     public const string PoliticaApi = "limite-api";
 
+    /// <summary>Política aplicada a la subida de archivos.</summary>
+    public const string PoliticaSubida = "limite-subida";
+
+    /// <summary>Política aplicada a la descarga de archivos.</summary>
+    public const string PoliticaDescarga = "limite-descarga";
+
     /// <summary>Registra las políticas de limitación de peticiones.</summary>
     /// <param name="servicios">Colección de servicios.</param>
     /// <returns>La misma colección, para encadenar llamadas.</returns>
@@ -50,6 +56,33 @@ public static class ExtensionesLimitacionPeticiones
                         Window = TimeSpan.FromMinutes(1),
                         SegmentsPerWindow = 6,
                         QueueLimit = 0,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+                    }));
+
+            // Subidas: cada una consume ancho de banda, memoria de descodificación y
+            // espacio en el almacén, así que van mucho más restringidas que el resto
+            // de la API y se cuentan por usuario.
+            opciones.AddPolicy(PoliticaSubida, contexto =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ObtenerParticion(contexto),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 12,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+                    }));
+
+            // Descargas: son más baratas que las subidas, pero pintar una conversación
+            // con muchas imágenes dispara varias a la vez, así que el cupo es amplio y
+            // con algo de cola en lugar de rechazar de golpe.
+            opciones.AddPolicy(PoliticaDescarga, contexto =>
+                RateLimitPartition.GetConcurrencyLimiter(
+                    ObtenerParticion(contexto),
+                    _ => new ConcurrencyLimiterOptions
+                    {
+                        PermitLimit = 6,
+                        QueueLimit = 24,
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst
                     }));
 

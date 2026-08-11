@@ -47,7 +47,9 @@ public sealed class ComandoPrivado : ComandoBase<ComandoPrivado.Opciones>
 
         if (!string.IsNullOrWhiteSpace(opciones.Mensaje))
         {
-            await _api.EnviarMensajeAsync(conversacion.Id, opciones.Mensaje, cancelacion).ConfigureAwait(false);
+            await _api
+                .EnviarMensajeAsync(conversacion.Id, opciones.Mensaje, cancelacion: cancelacion)
+                .ConfigureAwait(false);
             Presentacion.Exito($"Mensaje enviado a {conversacion.Nombre}.");
             return CodigoExito;
         }

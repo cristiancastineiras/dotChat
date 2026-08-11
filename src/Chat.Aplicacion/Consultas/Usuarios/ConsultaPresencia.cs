@@ -25,6 +25,6 @@ public sealed class ManejadorPresencia : IManejadorConsulta<ConsultaPresencia, I
         CancellationToken cancelacion = default)
     {
         ArgumentNullException.ThrowIfNull(consulta);
-        return Task.FromResult(_conexiones.ListarPresencia());
+        return _conexiones.ListarPresenciaAsync(cancelacion);
     }
 }

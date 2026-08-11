@@ -4,13 +4,17 @@ namespace Chat.Aplicacion.Dtos;
 /// <param name="TotalUsuarios">Usuarios registrados.</param>
 /// <param name="TotalSalas">Salas existentes.</param>
 /// <param name="TotalMensajes">Mensajes almacenados.</param>
-/// <param name="ConexionesActivas">Conexiones SignalR abiertas en este momento.</param>
+/// <param name="TotalAdjuntos">Archivos almacenados.</param>
+/// <param name="BytesAdjuntos">Espacio ocupado por los archivos, en bytes.</param>
+/// <param name="ConexionesActivas">Conexiones SignalR abiertas en todo el clúster.</param>
 /// <param name="UsuariosConectados">Usuarios distintos con al menos una conexión activa.</param>
 /// <param name="FechaConsulta">Fecha UTC de generación del informe.</param>
 public sealed record EstadisticasDto(
     int TotalUsuarios,
     int TotalSalas,
     int TotalMensajes,
+    int TotalAdjuntos,
+    long BytesAdjuntos,
     int ConexionesActivas,
     int UsuariosConectados,
     DateTimeOffset FechaConsulta);

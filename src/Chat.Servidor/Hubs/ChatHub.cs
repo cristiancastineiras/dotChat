@@ -35,7 +35,7 @@ public sealed class ChatHub : Hub<IClienteChat>
     private readonly IDespachador _despachador;
     private readonly IRegistroConexiones _conexiones;
     private readonly INotificadorTiempoReal _notificador;
-    private readonly LimitadorEnvioMensajes _limitador;
+    private readonly ILimitadorEnvios _limitador;
     private readonly IProveedorFechaHora _reloj;
     private readonly ILogger<ChatHub> _registro;
 
@@ -44,7 +44,7 @@ public sealed class ChatHub : Hub<IClienteChat>
         IDespachador despachador,
         IRegistroConexiones conexiones,
         INotificadorTiempoReal notificador,
-        LimitadorEnvioMensajes limitador,
+        ILimitadorEnvios limitador,
         IProveedorFechaHora reloj,
         ILogger<ChatHub> registro)
     {
@@ -89,7 +89,9 @@ public sealed class ChatHub : Hub<IClienteChat>
         using var actividad = MedidasChat.Fuente.StartActivity("hub.conectar");
         actividad?.SetTag("chat.usuario_id", usuarioId);
 
-        var esPrimeraConexion = _conexiones.Registrar(Context.ConnectionId, usuarioId, nombreUsuario, ahora);
+        var esPrimeraConexion = await _conexiones
+            .RegistrarAsync(Context.ConnectionId, usuarioId, nombreUsuario, ahora, Context.ConnectionAborted)
+            .ConfigureAwait(false);
 
         var salasUsuario = await ObtenerSalasDelUsuarioAsync(usuarioId).ConfigureAwait(false);
         var verificadas = SalasVerificadas();
@@ -99,7 +101,10 @@ public sealed class ChatHub : Hub<IClienteChat>
             await Groups.AddToGroupAsync(Context.ConnectionId, NombreGrupo(sala.Id), Context.ConnectionAborted)
                 .ConfigureAwait(false);
 
-            _conexiones.AgregarSala(Context.ConnectionId, sala.Nombre);
+            await _conexiones
+                .AgregarSalaAsync(Context.ConnectionId, sala.Nombre, Context.ConnectionAborted)
+                .ConfigureAwait(false);
+
             verificadas.Add(sala.Id);
         }
 
@@ -127,7 +132,12 @@ public sealed class ChatHub : Hub<IClienteChat>
     public async Task Desconectar(Exception? excepcion = null)
     {
         var ahora = _reloj.Ahora;
-        var cerrada = _conexiones.Eliminar(Context.ConnectionId, ahora);
+
+        // El cierre no usa el token de la conexión: para cuando se ejecuta ya está
+        // cancelado, y saltarse la limpieza dejaría al usuario «en línea» para siempre.
+        var cerrada = await _conexiones
+            .EliminarAsync(Context.ConnectionId, ahora, CancellationToken.None)
+            .ConfigureAwait(false);
 
         if (excepcion is null)
         {
@@ -162,9 +172,17 @@ public sealed class ChatHub : Hub<IClienteChat>
 
     /// <summary>Publica un mensaje en una sala y lo difunde a sus miembros conectados.</summary>
     /// <param name="salaId">Sala destino.</param>
-    /// <param name="texto">Contenido en claro.</param>
+    /// <param name="texto">Contenido en claro; puede ir vacío si se adjunta una imagen.</param>
     /// <param name="identificadorEnvio">Identificador único generado por el cliente (antirrepetición).</param>
-    public async Task<MensajeDto?> EnviarMensaje(Guid salaId, string texto, Guid identificadorEnvio)
+    /// <param name="adjuntoId">
+    /// Imagen subida previamente por HTTP. Por el hub viaja solo el identificador:
+    /// los bytes ya están en el servidor.
+    /// </param>
+    public async Task<MensajeDto?> EnviarMensaje(
+        Guid salaId,
+        string texto,
+        Guid identificadorEnvio,
+        Guid? adjuntoId = null)
     {
         var usuarioId = Context.User!.ObtenerUsuarioId();
 
@@ -172,7 +190,7 @@ public sealed class ChatHub : Hub<IClienteChat>
         actividad?.SetTag("chat.sala_id", salaId);
         actividad?.SetTag("chat.usuario_id", usuarioId);
 
-        if (!_limitador.IntentarConsumir(usuarioId))
+        if (!await _limitador.IntentarConsumirAsync(usuarioId, Context.ConnectionAborted).ConfigureAwait(false))
         {
             MedidasChat.RegistrarMensajeRechazado("limite_frecuencia");
 
@@ -192,7 +210,7 @@ public sealed class ChatHub : Hub<IClienteChat>
         {
             var comando = new ComandoEnviarMensaje(
                 usuarioId,
-                new SolicitudEnviarMensajeDto(salaId, texto, identificadorEnvio));
+                new SolicitudEnviarMensajeDto(salaId, texto, identificadorEnvio, adjuntoId));
 
             // El manejador cifra, persiste y difunde el mensaje a través del notificador.
             var mensaje = await _despachador.EjecutarAsync(comando, Context.ConnectionAborted).ConfigureAwait(false);
@@ -291,7 +309,10 @@ public sealed class ChatHub : Hub<IClienteChat>
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, NombreGrupo(salaId), Context.ConnectionAborted)
                 .ConfigureAwait(false);
 
-            _conexiones.QuitarSala(Context.ConnectionId, nombreSala);
+            await _conexiones
+                .QuitarSalaAsync(Context.ConnectionId, nombreSala, Context.ConnectionAborted)
+                .ConfigureAwait(false);
+
             SalasVerificadas().Remove(salaId);
 
             return resultado;
@@ -379,7 +400,10 @@ public sealed class ChatHub : Hub<IClienteChat>
         await Groups.AddToGroupAsync(Context.ConnectionId, NombreGrupo(sala.Id), Context.ConnectionAborted)
             .ConfigureAwait(false);
 
-        _conexiones.AgregarSala(Context.ConnectionId, sala.Nombre);
+        await _conexiones
+            .AgregarSalaAsync(Context.ConnectionId, sala.Nombre, Context.ConnectionAborted)
+            .ConfigureAwait(false);
+
         SalasVerificadas().Add(sala.Id);
     }
 

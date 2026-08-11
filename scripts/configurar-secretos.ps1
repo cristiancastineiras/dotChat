@@ -120,3 +120,7 @@ if ($establecida -and $generada) {
 Write-Host ''
 Write-Host 'Secretos configurados. Ya puede arrancar el servidor con:' -ForegroundColor Cyan
 Write-Host '    dotnet run --project src/Chat.Servidor'
+
+Write-Host ''
+
+Read-Host 'Pulse ENTER para salir'

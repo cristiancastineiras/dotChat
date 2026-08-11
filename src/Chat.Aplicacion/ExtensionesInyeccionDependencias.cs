@@ -56,6 +56,7 @@ public static class ExtensionesInyeccionDependencias
             ManejadorMarcarSalaLeida>();
         servicios.AddScoped<IManejadorComando<ComandoEliminarSala, ResultadoOperacionDto>, ManejadorEliminarSala>();
         servicios.AddScoped<IManejadorComando<ComandoEnviarMensaje, MensajeDto>, ManejadorEnviarMensaje>();
+        servicios.AddScoped<IManejadorComando<ComandoSubirAdjunto, AdjuntoDto>, ManejadorSubirAdjunto>();
         servicios.AddScoped<IManejadorComando<ComandoEliminarUsuario, ResultadoOperacionDto>, ManejadorEliminarUsuario>();
         servicios.AddScoped<IManejadorComando<ComandoLimpiarCache, ResultadoOperacionDto>, ManejadorLimpiarCache>();
 
@@ -78,6 +79,9 @@ public static class ExtensionesInyeccionDependencias
         servicios.AddScoped<
             IManejadorConsulta<ConsultaObtenerMensajes, IReadOnlyList<MensajeDto>>,
             ManejadorObtenerMensajes>();
+        servicios.AddScoped<
+            IManejadorConsulta<ConsultaDescargarAdjunto, ContenidoAdjuntoDto>,
+            ManejadorDescargarAdjunto>();
         servicios.AddScoped<IManejadorConsulta<ConsultaEstadisticas, EstadisticasDto>, ManejadorEstadisticas>();
         servicios.AddScoped<
             IManejadorConsulta<ConsultaConexionesActivas, IReadOnlyList<ConexionActivaDto>>,

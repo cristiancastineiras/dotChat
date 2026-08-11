@@ -214,9 +214,9 @@ public static class PresentacionAdmin
             Tarjeta("Mensajes", estadisticas.TotalMensajes, "orange1"));
 
         contenido.AddRow(
+            Tarjeta("Imágenes", estadisticas.TotalAdjuntos, "mediumpurple2"),
             Tarjeta("Conexiones", estadisticas.ConexionesActivas, "green"),
-            Tarjeta("En línea", estadisticas.UsuariosConectados, "green"),
-            new Markup(string.Empty));
+            Tarjeta("En línea", estadisticas.UsuariosConectados, "green"));
 
         AnsiConsole.Write(new Panel(contenido)
         {

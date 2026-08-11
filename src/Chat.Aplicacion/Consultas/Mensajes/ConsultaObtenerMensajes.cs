@@ -78,22 +78,39 @@ public sealed class ManejadorObtenerMensajes
 
         foreach (var mensaje in mensajes)
         {
-            // Un mensaje ilegible (clave rotada o dato corrupto) no debe tumbar la consulta:
-            // se sustituye por un marcador y se deja constancia en el registro.
-            if (!_cifrador.IntentarDescifrar(mensaje.TextoCifrado, out var texto) || texto is null)
-            {
-                _registro.LogError(
-                    "No se pudo descifrar un mensaje. MensajeId={MensajeId} SalaId={SalaId}",
-                    mensaje.Id,
-                    mensaje.SalaId);
-
-                texto = "[mensaje ilegible: la clave de cifrado no coincide]";
-            }
-
             var nombreAutor = mensaje.Usuario?.UserName ?? Proyecciones.NombreDesconocido;
+            var texto = DescifrarTexto(mensaje);
+
             resultado.Add(mensaje.ADto(texto, Proyecciones.NombreSalaEnMensaje(sala, nombreAutor), nombreAutor));
         }
 
         return resultado;
+    }
+
+    /// <summary>
+    /// Descifra el texto de un mensaje. Un mensaje ilegible —clave rotada o dato
+    /// corrupto— no debe tumbar la consulta entera: se sustituye por un marcador y se
+    /// deja constancia en el registro.
+    /// </summary>
+    /// <param name="mensaje">Mensaje leído de la base de datos.</param>
+    /// <returns>El texto en claro, vacío si el mensaje era solo una imagen.</returns>
+    private string DescifrarTexto(Dominio.Entidades.Mensaje mensaje)
+    {
+        if (mensaje.TextoCifrado is null)
+        {
+            return string.Empty;
+        }
+
+        if (_cifrador.IntentarDescifrar(mensaje.TextoCifrado, out var texto) && texto is not null)
+        {
+            return texto;
+        }
+
+        _registro.LogError(
+            "No se pudo descifrar un mensaje. MensajeId={MensajeId} SalaId={SalaId}",
+            mensaje.Id,
+            mensaje.SalaId);
+
+        return "[mensaje ilegible: la clave de cifrado no coincide]";
     }
 }

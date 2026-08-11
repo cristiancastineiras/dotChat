@@ -62,8 +62,7 @@ public sealed class ManejadorRefrescarSesion
         }
 
         var hash = _generador.CalcularHashRefresco(comando.Solicitud.TokenRefresco);
-        var almacenado = await _tokens.ObtenerPorHashAsync(hash, cancelacion).ConfigureAwait(false)
-            ?? throw new ExcepcionAutenticacion(MensajeTokenInvalido);
+        var almacenado = await _tokens.ObtenerPorHashAsync(hash, cancelacion).ConfigureAwait(false) ?? throw new ExcepcionAutenticacion(MensajeTokenInvalido);
 
         var ahora = _reloj.Ahora;
 

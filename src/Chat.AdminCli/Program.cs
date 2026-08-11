@@ -8,7 +8,24 @@ using Chat.AdminCli.Servicios;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console.Cli;
+using System.Text;
 
+// ---------------------------------------------------------------------------
+// Codificación de la consola
+// ---------------------------------------------------------------------------
+// Los historiales que lista esta consola pueden contener emojis, y la página de
+// códigos heredada de Windows los pintaría como interrogaciones.
+try
+{
+    if (!Console.IsOutputRedirected)
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+    }
+}
+catch (Exception excepcion) when (excepcion is IOException or PlatformNotSupportedException)
+{
+    // Sin terminal detrás no hay nada que ajustar.
+}
 
 // ---------------------------------------------------------------------------
 // Configuración: appsettings.json + variables de entorno DOTCHAT_

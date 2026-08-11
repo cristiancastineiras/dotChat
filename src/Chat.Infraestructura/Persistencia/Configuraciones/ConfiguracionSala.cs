@@ -26,9 +26,13 @@ public sealed class ConfiguracionSala : IEntityTypeConfiguration<Sala>
         constructor.ToTable("Salas");
         constructor.HasKey(s => s.Id);
 
+        // La columna lleva la intercalación insensible declarada en el contexto: con
+        // ella, tanto el índice único como las comparaciones de igualdad tratan
+        // «General» y «general» como el mismo nombre.
         constructor.Property(s => s.Nombre)
             .IsRequired()
-            .HasMaxLength(LongitudMaximaNombreAlmacenado);
+            .HasMaxLength(LongitudMaximaNombreAlmacenado)
+            .UseCollation(ContextoChat.IntercalacionInsensible);
 
         constructor.Property(s => s.Descripcion)
             .HasMaxLength(ValidadorEntrada.LongitudMaximaDescripcionSala);
@@ -44,8 +48,8 @@ public sealed class ConfiguracionSala : IEntityTypeConfiguration<Sala>
 
         constructor.Property(s => s.FechaCreacion).IsRequired();
 
-        // El nombre de sala es único; SQLite aplica NOCASE para que la unicidad
-        // sea insensible a mayúsculas y evite salas «General» y «general».
+        // El nombre de sala es único. La unicidad hereda la intercalación de la
+        // columna, así que es insensible a mayúsculas y acentos.
         constructor.HasIndex(s => s.Nombre)
             .IsUnique()
             .HasDatabaseName("IX_Salas_Nombre");

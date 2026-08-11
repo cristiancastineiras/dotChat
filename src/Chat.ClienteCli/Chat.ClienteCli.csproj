@@ -16,6 +16,9 @@
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
     <PackageReference Include="Spectre.Console" />
     <PackageReference Include="Spectre.Console.Cli" />
+    <!-- Convierte una imagen en bloques de color de media altura, que es como se
+         dibujan las fotos en un terminal sin salirse de las secuencias ANSI. -->
+    <PackageReference Include="Spectre.Console.ImageSharp" />
     <!-- ZString compone las líneas de la conversación, que se pintan una por mensaje
          recibido, sin generar basura; ZLinq hace lo propio con las proyecciones. -->
     <PackageReference Include="ZString" />

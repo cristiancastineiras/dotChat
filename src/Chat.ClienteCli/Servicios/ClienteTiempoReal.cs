@@ -116,10 +116,15 @@ public sealed class ClienteTiempoReal : IAsyncDisposable, IDisposable
 
     /// <summary>Envía un mensaje a través del hub.</summary>
     /// <param name="salaId">Sala destino.</param>
-    /// <param name="texto">Contenido en claro.</param>
+    /// <param name="texto">Contenido en claro; puede ir vacío si se adjunta una imagen.</param>
+    /// <param name="adjuntoId">Imagen ya subida por HTTP que acompaña al mensaje.</param>
     /// <param name="cancelacion">Token de cancelación.</param>
     /// <returns>El mensaje persistido, o <c>null</c> si el servidor lo rechazó.</returns>
-    public Task<MensajeDto?> EnviarMensajeAsync(Guid salaId, string texto, CancellationToken cancelacion = default)
+    public Task<MensajeDto?> EnviarMensajeAsync(
+        Guid salaId,
+        string texto,
+        Guid? adjuntoId = null,
+        CancellationToken cancelacion = default)
         => RequerirConexion().InvokeAsync<MensajeDto?>(
             "EnviarMensaje",
             salaId,
@@ -127,6 +132,7 @@ public sealed class ClienteTiempoReal : IAsyncDisposable, IDisposable
             // Identificador único por envío: hace la operación idempotente y
             // permite al servidor descartar reenvíos repetidos.
             Guid.CreateVersion7(),
+            adjuntoId,
             cancelacion);
 
     /// <summary>Une al usuario a una sala mediante el hub.</summary>

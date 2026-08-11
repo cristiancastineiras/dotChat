@@ -11,17 +11,20 @@ Plataforma de mensajería en tiempo real **totalmente local**
 2. [Requisitos](#requisitos)
 3. [Puesta en marcha en cinco minutos](#puesta-en-marcha-en-cinco-minutos)
 4. [El cliente: hablar con gente](#el-cliente-hablar-con-gente)
-5. [Conversaciones privadas y presencia](#conversaciones-privadas-y-presencia)
-6. [La consola de administración](#la-consola-de-administración)
-7. [Telemetría con OpenTelemetry](#telemetría-con-opentelemetry)
-8. [Configuración](#configuración)
-9. [Arquitectura](#arquitectura)
-10. [API HTTP y hub de SignalR](#api-http-y-hub-de-signalr)
-11. [Seguridad](#seguridad)
-12. [Base de datos y migraciones](#base-de-datos-y-migraciones)
-13. [Rendimiento: librerías de Cysharp](#rendimiento-librerías-de-cysharp)
-14. [Estado de las pruebas](#estado-de-las-pruebas)
-15. [Licencia](#licencia)
+5. [Emojis](#emojis)
+6. [Imágenes en la consola](#imágenes-en-la-consola)
+7. [Conversaciones privadas y presencia](#conversaciones-privadas-y-presencia)
+8. [La consola de administración](#la-consola-de-administración)
+9. [Telemetría con OpenTelemetry](#telemetría-con-opentelemetry)
+10. [Configuración](#configuración)
+11. [Arquitectura](#arquitectura)
+12. [Caché en dos niveles con Valkey](#caché-en-dos-niveles-con-valkey)
+13. [API HTTP y hub de SignalR](#api-http-y-hub-de-signalr)
+14. [Seguridad](#seguridad)
+15. [Base de datos y migraciones](#base-de-datos-y-migraciones)
+16. [Rendimiento: librerías de Cysharp](#rendimiento-librerías-de-cysharp)
+17. [Estado de las pruebas](#estado-de-las-pruebas)
+18. [Licencia](#licencia)
 
 ---
 
@@ -33,9 +36,12 @@ Plataforma de mensajería en tiempo real **totalmente local**
 | **Mensajes sin leer** | Cada sala lleva la cuenta de lo que te falta por leer y se ordena por actividad reciente. |
 | **Presencia** | Quién está **en línea** ahora mismo, cuántas conexiones tiene y cuándo se le vio por última vez. |
 | **Tiempo real** | Mensajes, altas y bajas de sala, avisos de «está escribiendo…» y cambios de presencia, por SignalR. |
-| **Cifrado** | Los mensajes se guardan cifrados con **AES-256-GCM**; en la base de datos no hay texto en claro. |
+| **Emojis** | Se escriben tal cual o con atajos `:fuego:`, y el servidor los expande antes de cifrar. |
+| **Imágenes** | Se comparten fotos y **se dibujan dentro de la consola**, sin salir del terminal. |
+| **Cifrado** | Los mensajes **y las imágenes** se guardan cifrados con **AES-256-GCM**; en la base de datos no hay nada en claro. |
 | **Autenticación** | ASP.NET Core Identity + **JWT** con tokens de refresco. |
-| **Caché** | FusionCache para usuarios, salas y configuración, con invalidación al escribir. |
+| **Datos** | **PostgreSQL 16** con tipos nativos: `uuid`, `timestamptz`, `bytea` e índices parciales. |
+| **Caché** | FusionCache en dos niveles: memoria del proceso sobre **Valkey**, con canal de invalidación. |
 | **Observabilidad** | Trazas, métricas y registros por **OTLP** hacia un receptor local. |
 | **Interfaz** | Dos consolas con Spectre.Console: una para usuarios y otra para administración. |
 
@@ -44,13 +50,37 @@ Plataforma de mensajería en tiempo real **totalmente local**
 ## Requisitos
 
 - **.NET SDK 10.0** o superior (`dotnet --version` debe decir `10.x`).
-- Windows, Linux o macOS.
+- **PostgreSQL 16** y **Valkey**, que es lo que trae el `docker-compose.yml` del
+  repositorio.
+- Windows, Linux o macOS. Para ver las imágenes en la consola hace falta un terminal
+  con color verdadero: Windows Terminal, iTerm2 o cualquier terminal moderno de Linux.
 - Opcional: un receptor OpenTelemetry local si quieres ver las trazas
   (por ejemplo **OpenTelemetry Desktop Viewer**).
 
 ---
 
 ## Puesta en marcha en cinco minutos
+
+### 0. Levanta los servicios
+
+```bash
+docker compose up -d
+```
+
+Arranca PostgreSQL en el `5432` y Valkey en el `6379`, con los datos de la base en un
+volumen que sobrevive al reinicio del contenedor. Si prefieres lanzarlos a mano:
+
+```bash
+docker run -d --name postgres-dev --restart unless-stopped \
+  -e POSTGRES_USER=appuser -e POSTGRES_PASSWORD=AppPassword123! -e POSTGRES_DB=appdb \
+  -p 5432:5432 -v postgres-data:/var/lib/postgresql/data postgres:16
+
+docker run -d --name valkey-dev --restart unless-stopped -p 6379:6379 valkey/valkey:latest
+```
+
+> Las credenciales de `appsettings.json` son las de este entorno local. En cualquier
+> otro sitio, la cadena de conexión llega por
+> `DOTCHAT_ConnectionStrings__BaseDatos` y nunca se versiona.
 
 ### 1. Genera los secretos
 
@@ -136,6 +166,8 @@ dotnet run --project src/Chat.AdminCli
 | `privado <usuario>` | Abre una conversación **privada 1:1**. |
 | `privado <usuario> -m "texto"` | Manda un mensaje suelto y termina. |
 | `enviar <sala> "texto"` | Publica un mensaje sin abrir la conversación. |
+| `imagen <sala> <ruta> [-m "pie"]` | Comparte una imagen y la dibuja en la consola. |
+| `emojis [búsqueda]` | Lista los atajos `:nombre:` disponibles. |
 | `historial <sala> [-n 50]` | Muestra los mensajes recientes en una tabla. |
 | `usuarios [--conectados]` | Lista los usuarios y quién está en línea. |
 | `salir <sala>` | Abandona una sala. |
@@ -157,12 +189,102 @@ Dentro de la conversación funcionan estas **órdenes de barra**:
 | `/miembros` | Quién está en la sala y quién está conectado ahora mismo. |
 | `/historial` | Vuelve a cargar los mensajes recientes. |
 | `/invitar <usuario>` | Mete a alguien en la sala (única forma de entrar en una privada). |
+| `/imagen <ruta> [pie]` | Comparte una imagen. Entrecomilla la ruta si tiene espacios. |
+| `/ver <n>` | Vuelve a dibujar la enésima imagen recibida; `1` es la última. |
+| `/emojis` | Muestra el catálogo de atajos. |
 | `/limpiar` | Borra la pantalla sin perder la conexión. |
 | `/ayuda` | Recuerda esta lista. |
 
 Mientras escribes, el resto de la sala ve un **«está escribiendo…»**. El aviso se
 manda en cuanto pulsas la primera tecla y el servidor lo limita a uno cada dos
 segundos por conexión, así que no genera tráfico apreciable.
+
+---
+
+## Emojis
+
+Puedes pegar el emoji directamente o escribir un **atajo** entre dos puntos:
+
+```
+chat:ana> Ya está desplegado :fuego: :pulgar:
+```
+
+La sustitución la hace **el servidor**, dentro del envío y antes de cifrar. Es una
+decisión deliberada: lo que se guarda es ya el emoji, así que el historial se lee
+igual desde cualquier terminal y dos clientes con catálogos distintos no muestran
+cosas diferentes para el mismo mensaje. Solo se sustituye lo que está en el catálogo,
+de modo que un `12:30:45` o una ruta con dos puntos quedan intactos.
+
+`emojis` lista el catálogo completo y `emojis <texto>` busca dentro de él por nombre,
+alias o categoría. Dentro de una conversación, `/emojis` hace lo mismo.
+
+Un detalle que suele romperse en otros sitios: los emojis compuestos —familias,
+profesiones, banderas— se sostienen sobre un carácter invisible de unión. El saneado
+de entrada lo conserva **solo en el cuerpo de los mensajes**; en los nombres de
+usuario y de sala se sigue descartando todo carácter invisible, porque ahí sirven para
+suplantar a alguien.
+
+Las tres consolas fuerzan UTF-8 en la entrada y la salida al arrancar, que es lo que
+hace falta en Windows para que un emoji no salga como interrogaciones.
+
+---
+
+## Imágenes en la consola
+
+```
+chat:ana> imagen General C:\graficos\ventas.png -m "Cierre del trimestre :grafico:"
+```
+
+o, dentro de una conversación abierta:
+
+```
+/imagen "C:\Mis fotos\perro.jpg" mira qué cara
+```
+
+**Cómo viaja una imagen.** La subida y el envío van por caminos distintos a propósito:
+
+1. El cliente sube el fichero a `POST /api/adjuntos?salaId=…`. Por el hub no cabría:
+   SignalR está afinado para mensajes pequeños y frecuentes, y meter megabytes por ahí
+   bloquearía la conversación de toda la sala mientras dura la transferencia.
+2. El servidor **lee solo la cabecera** para conocer el formato y el tamaño, rechaza lo
+   que exceda los límites, descodifica **un único fotograma**, reescala si hace falta,
+   **descarta los perfiles EXIF, IPTC y XMP** —con su geolocalización y su modelo de
+   cámara— y **vuelve a codificar**. Lo que se persiste es el resultado de ese último
+   paso, nunca el fichero original.
+3. El resultado se cifra con la misma clave AES-256-GCM que el texto, pero con un
+   **contexto asociado distinto**, para que un criptograma de mensaje no pueda hacerse
+   pasar por el de una imagen ni al revés.
+4. El cliente publica el mensaje por el hub con el identificador del adjunto. El
+   servidor comprueba que lo subió esa misma persona, que va a la misma sala y que no
+   se ha usado ya.
+
+**Cómo se dibuja.** Un terminal no pinta píxeles, así que la imagen se traduce a
+caracteres de bloque coloreados: cada celda de texto lleva dos «píxeles», uno en el
+color de fondo y otro en el de primer plano. Funciona en cualquier terminal con color
+verdadero, sin depender de que admita Sixel o el protocolo de Kitty.
+
+Los mensajes no se pintan desde el manejador del hub sino a través de una cola que
+consume un único hilo. Dibujar una imagen exige descargarla, y hacerlo dentro del
+manejador bloquearía la recepción, mientras que hacerlo en paralelo mezclaría las
+líneas de unos mensajes con las de otros. Con la cola, la conversación se lee siempre
+en el orden en que llegó.
+
+En el cliente, `MostrarImagenesEnLinea` desactiva el dibujo automático —quedan las
+fichas y `/ver <n>`— y `ColumnasImagen` ajusta el ancho.
+
+**Límites**, todos configurables en la sección `Adjuntos` del servidor:
+
+| Opción | Por defecto | Para qué |
+| --- | --- | --- |
+| `TamanoMaximoBytes` | 5 MiB | Tope del fichero recibido. Se aplica al declararlo y también mientras se lee, porque un envío por fragmentos puede anunciar poco y mandar mucho. |
+| `MegapixelesMaximos` | 40 | Frena las «bombas de descompresión»: se comprueba en la cabecera, antes de reservar memoria para el mapa de bits. |
+| `LadoMaximoPixeles` | 1600 | Lado máximo tras reescalar. En una consola nadie va a mirar más resolución. |
+| `CalidadJpeg` | 82 | Calidad de recodificación de las imágenes opacas. |
+| `Activados` | `true` | Permite apagar del todo la función. |
+
+Se admiten PNG, JPEG, GIF, WebP y BMP, determinados **descodificando el contenido**,
+no por la extensión. Lo que traía transparencia sale como PNG y el resto como JPEG.
+La subida tiene su propia política de limitación: doce por minuto y usuario.
 
 ---
 
@@ -316,9 +438,12 @@ Las variables de entorno usan el prefijo `DOTCHAT_` y `__` como separador de sec
 
 | Sección | Contenido |
 | --- | --- |
+| `ConnectionStrings:BaseDatos` | Cadena de conexión de PostgreSQL. |
 | `Jwt` | Emisor, audiencia, clave de firma, vigencia del acceso y del refresco. |
 | `Cifrado` | Clave AES-256, contexto asociado y longitud máxima de mensaje. |
+| `Adjuntos` | Límites de tamaño, resolución y calidad de las imágenes. |
 | `Cache` | Duraciones por familia de datos y ventana antirrepetición. |
+| `Valkey` | Conexión, prefijo de claves y tiempos de espera del segundo nivel. |
 | `SignalR` | Ruta del hub, latidos, tamaño máximo de mensaje y límite por minuto. |
 | `Telemetria` | Exportación OTLP (ver arriba). |
 | `Administrador` | Cuenta inicial y sala por defecto. |
@@ -334,7 +459,9 @@ comparten forma:
     "UrlServidor": "https://localhost:7150",
     "SegundosTiempoEspera": 30,
     "MensajesHistorialInicial": 30,
-    "AceptarCertificadosNoConfiables": false   // solo desarrollo local
+    "AceptarCertificadosNoConfiables": false,  // solo desarrollo local
+    "MostrarImagenesEnLinea": true,            // dibuja las fotos al recibirlas
+    "ColumnasImagen": 48                       // ancho del dibujo, en columnas
   }
 }
 ```
@@ -355,7 +482,8 @@ src/
 │                          No depende de nada.
 ├── Chat.Aplicacion        Casos de uso (CQRS ligero), DTOs, validación y
 │                          abstracciones de infraestructura.
-├── Chat.Infraestructura   EF Core + SQLite, Identity, cifrado, JWT y FusionCache.
+├── Chat.Infraestructura   EF Core + PostgreSQL, Identity, cifrado, JWT,
+│                          tratamiento de imágenes y caché sobre Valkey.
 ├── Chat.Servidor          ASP.NET Core: endpoints mínimos, hub de SignalR,
 │                          telemetría y composición del contenedor.
 ├── Chat.ClienteCli        Consola de usuario (Spectre.Console).
@@ -377,6 +505,31 @@ Decisiones que conviene conocer:
   reflexión, para que no se filtre nunca un campo sensible.
 - **Notificación desacoplada**: la capa de aplicación difunde por
   `INotificadorTiempoReal`; solo el servidor conoce `IHubContext`.
+- **Imágenes detrás de una abstracción**: `IProcesadorImagenes` describe qué hace falta
+  —validar, reescalar, limpiar metadatos— y la implementación con ImageSharp vive en
+  infraestructura. La capa de aplicación no sabe con qué biblioteca se consigue.
+- **Metadatos y binario separados**: `Adjuntos` guarda la ficha y `AdjuntosContenido`
+  los bytes. Pintar el historial trae las fichas de todos los adjuntos de la sala, y si
+  los bytes estuvieran en la misma fila cada página arrastraría megabytes que nadie va
+  a mirar.
+
+---
+
+## Caché en dos niveles con Valkey
+
+FusionCache resuelve la mayoría de las lecturas en la **memoria del proceso** (L1) y
+respalda las entradas en **Valkey** (L2), que habla el protocolo de Redis y se conecta
+con el cliente estándar. Un tercer elemento, el **canal de retropropagación**, avisa a
+las demás instancias de cada invalidación: sin él, vaciar la caché en una dejaría a las
+otras sirviendo su copia caliente hasta que caducara.
+
+Nada de esto es una dependencia dura. Si Valkey no responde, FusionCache abre el
+cortacircuitos, lo marca como degradado y sigue resolviendo con L1 en lugar de
+propagar el error a la petición. Con `Valkey:Activado` en `false` la caché se queda en
+memoria del proceso, que es suficiente para una instancia única.
+
+El prefijo de `Valkey:Prefijo` aísla tanto las claves como el canal, de modo que dos
+entornos sobre la misma instancia no se pisan ni se invalidan entre sí.
 
 ---
 
@@ -408,6 +561,8 @@ frecuencia.
 | `POST` | `/api/salas/{id}/salir` | Abandona la sala. |
 | `GET` | `/api/mensajes?salaId=&cantidad=` | Historial descifrado. |
 | `POST` | `/api/mensajes` | Publica sin usar el hub. |
+| `POST` | `/api/adjuntos?salaId=` | Sube una imagen (formulario multiparte, campo `archivo`). |
+| `GET` | `/api/adjuntos/{id}` | Descarga el contenido descifrado de una imagen. |
 
 ### Usuarios, diagnóstico y administración
 
@@ -451,9 +606,18 @@ frecuencia.
   y bloqueo temporal a los 5 intentos fallidos.
 - **Mensajes cifrados** con AES-256-GCM antes de tocar el disco. Un mensaje ilegible
   (por rotación de clave) no tumba la consulta: se marca y se registra.
+- **Imágenes cifradas** con la misma clave pero **distinto contexto asociado**, de modo
+  que un criptograma de mensaje no puede hacerse pasar por el de una imagen.
+- **Imágenes recodificadas**: el formato se determina descodificando el contenido, no
+  por la extensión; se limita la superficie antes de reservar memoria, se descartan los
+  perfiles EXIF, IPTC y XMP, y lo que se guarda es el resultado de volver a codificar.
+  Así nunca se persiste ni se reenvía un fichero que no sea una imagen legítima.
+- **Adjuntos atados a su sala y a su autor**: conocer un identificador no basta para
+  colar una imagen ajena en otra conversación, ni para reutilizar una ya publicada.
 - **Validación y saneamiento** de toda entrada: se normaliza Unicode y se eliminan
   controles y caracteres invisibles usados para suplantar identidades o inyectar
-  secuencias ANSI en la terminal.
+  secuencias ANSI en la terminal. La única excepción es el carácter de unión de los
+  emojis, y solo dentro del cuerpo de un mensaje.
 - **Antirrepetición**: cada envío lleva un identificador único y se descartan los
   repetidos dentro de la ventana configurada.
 - **Limitación de frecuencia** nativa de ASP.NET Core en la API y por usuario en el hub.
@@ -466,16 +630,26 @@ frecuencia.
 
 ## Base de datos y migraciones
 
-SQLite, con las marcas de tiempo guardadas como enteros para que los índices sirvan
-para ordenar y comparar.
+**PostgreSQL 16**, con los tipos nativos del motor: `uuid` para los identificadores,
+`timestamp with time zone` para las fechas —comparables y ordenables por índice sin
+convertirlas a enteros— y `bytea` para los binarios, que PostgreSQL saca de la fila y
+comprime por su cuenta cuando crecen.
 
 | Tabla | Contenido |
 | --- | --- |
 | `Salas` | Nombre, tipo, clave de conversación directa, última actividad. |
-| `Mensajes` | Texto cifrado, sala, autor y fecha. |
+| `Mensajes` | Texto cifrado, adjunto opcional, sala, autor y fecha. |
+| `Adjuntos` | Ficha de cada imagen: nombre, tipo, dimensiones, tamaño y huella. |
+| `AdjuntosContenido` | Bytes cifrados de las imágenes, en una tabla aparte. |
 | `MiembrosSala` | Pertenencias y marca de última lectura. |
 | `TokensRefresco` | Tokens emitidos, con su hash. |
 | `AspNet*` | Tablas de ASP.NET Core Identity. |
+
+El nombre de sala usa una **intercalación ICU no determinista**, con la que PostgreSQL
+compara ignorando mayúsculas y acentos. Con ella, el índice único impide a la vez
+«General», «general» y «Genéral», y la búsqueda por nombre se resuelve con una simple
+igualdad que aprovecha ese mismo índice: ni `LIKE`, ni columnas normalizadas aparte,
+ni funciones dentro del índice.
 
 Las migraciones se aplican solas al arrancar. Para crear una nueva:
 
@@ -483,9 +657,12 @@ Las migraciones se aplican solas al arrancar. Para crear una nueva:
 dotnet tool restore
 dotnet ef migrations add NombreDeLaMigracion \
   --project src/Chat.Infraestructura \
-  --startup-project src/Chat.Infraestructura \
   --output-dir Migraciones
 ```
+
+Las herramientas construyen el contexto con `FabricaContextoDisenio`, que toma la
+cadena de conexión del argumento, de `DOTCHAT_ConnectionStrings__BaseDatos` o, en
+último término, de un valor de reserva que solo sirve para generar el SQL.
 
 ---
 
@@ -507,24 +684,31 @@ No se han metido donde no aportaban: el resto del código sigue usando LINQ y
 
 ## Estado de las pruebas
 
-El proyecto `tests/Chat.Tests` está creado y configurado (xUnit, NSubstitute,
-coverlet, referencias a todas las capas) **pero todavía no contiene ningún caso de
-prueba**. La cobertura real es del 0 %.
+`tests/Chat.Tests` (xUnit, NSubstitute, coverlet) cubre por ahora **el catálogo de
+emojis y el saneamiento de entrada**: 29 casos que vigilan los sitios donde un error
+es invisible hasta que alguien escribe el mensaje equivocado.
 
-Las áreas que conviene cubrir primero, por orden de riesgo:
-
-1. `ServicioCifradorMensajes` — ida y vuelta del cifrado, y qué pasa con una clave
-   rotada.
-2. `GeneradorTokensJwt` — claims emitidos, vigencia y rechazo de claves cortas.
-3. `ManejadorAbrirConversacionDirecta` — idempotencia de la clave canónica.
-4. `RegistroConexiones` — recuento de conexiones y transiciones de presencia.
-5. `ValidadorEntrada` — saneamiento de caracteres invisibles y de control.
-
-Para ejecutarlas cuando las haya:
+- **`CatalogoEmojis`** — que no haya atajos duplicados (lo comprueba el propio
+  catálogo al cargarse, y la prueba adelanta ese fallo a la compilación), que la
+  expansión respete horas y rutas de Windows, y que cada entrada sea alcanzable.
+- **`ValidadorEntrada`** — que los emojis compuestos y los selectores de variación
+  sobrevivan al saneado, que los invisibles peligrosos sigan cayendo dejando un corte
+  de palabra en su lugar, y que un nombre de archivo se reduzca a su último tramo.
 
 ```bash
 dotnet test
 ```
+
+Lo que conviene cubrir a continuación, por orden de riesgo:
+
+1. `ServicioCifradorMensajes` — ida y vuelta del cifrado de texto y de binario, que
+   un criptograma de uno no se abra con el contexto del otro, y qué pasa con una clave
+   rotada.
+2. `ProcesadorImagenesImageSharp` — rechazo de lo que no es una imagen, del exceso de
+   megapíxeles, y comprobación de que los metadatos EXIF desaparecen.
+3. `GeneradorTokensJwt` — claims emitidos, vigencia y rechazo de claves cortas.
+4. `ManejadorAbrirConversacionDirecta` — idempotencia de la clave canónica.
+5. `RegistroConexiones` — recuento de conexiones y transiciones de presencia.
 
 ---
 

@@ -1,5 +1,4 @@
 using Chat.Dominio.Entidades;
-using Chat.Infraestructura.Persistencia.Convertidores;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +10,12 @@ namespace Chat.Infraestructura.Persistencia;
 /// </summary>
 public class ContextoChat : IdentityDbContext<Usuario, Rol, Guid>
 {
+    /// <summary>
+    /// Nombre de la intercalación insensible a mayúsculas y acentos usada en las
+    /// columnas cuyo valor identifica algo ante el usuario (el nombre de una sala).
+    /// </summary>
+    public const string IntercalacionInsensible = "insensible_mayusculas";
+
     /// <summary>Crea el contexto con las opciones indicadas.</summary>
     /// <param name="opciones">Opciones de configuración del contexto.</param>
     public ContextoChat(DbContextOptions<ContextoChat> opciones) : base(opciones)
@@ -23,6 +28,9 @@ public class ContextoChat : IdentityDbContext<Usuario, Rol, Guid>
     /// <summary>Mensajes cifrados.</summary>
     public DbSet<Mensaje> Mensajes => Set<Mensaje>();
 
+    /// <summary>Fichas de los archivos adjuntos; el contenido vive en el almacén de objetos.</summary>
+    public DbSet<Adjunto> Adjuntos => Set<Adjunto>();
+
     /// <summary>Membresías de sala.</summary>
     public DbSet<MiembroSala> MiembrosSala => Set<MiembroSala>();
 
@@ -32,23 +40,22 @@ public class ContextoChat : IdentityDbContext<Usuario, Rol, Guid>
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder constructor)
     {
+        ArgumentNullException.ThrowIfNull(constructor);
+
         base.OnModelCreating(constructor);
+
+        // Intercalación ICU no determinista: PostgreSQL compara ignorando mayúsculas
+        // y acentos, de modo que la unicidad del nombre de sala impide a la vez
+        // «General», «general» y «Genéral» sin necesidad de columnas normalizadas
+        // aparte ni de funciones en los índices.
+        constructor.HasCollation(
+            IntercalacionInsensible,
+            locale: "und-u-ks-level1",
+            provider: "icu",
+            deterministic: false);
 
         // Todas las configuraciones de entidad viven en clases IEntityTypeConfiguration
         // dentro de este mismo ensamblado.
         constructor.ApplyConfigurationsFromAssembly(typeof(ContextoChat).Assembly);
-    }
-
-    /// <inheritdoc />
-    protected override void ConfigureConventions(ModelConfigurationBuilder constructor)
-    {
-        ArgumentNullException.ThrowIfNull(constructor);
-
-        base.ConfigureConventions(constructor);
-
-        // Convención global: todas las marcas de tiempo se persisten como enteros
-        // para que SQLite pueda compararlas y ordenarlas usando los índices.
-        constructor.Properties<DateTimeOffset>().HaveConversion<ConvertidorFechaHora>();
-        constructor.Properties<DateTimeOffset?>().HaveConversion<ConvertidorFechaHoraOpcional>();
     }
 }

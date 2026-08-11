@@ -30,8 +30,23 @@ public static class ExtensionesOpciones
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        servicios.AddOptions<AdjuntosOptions>()
+            .Bind(configuracion.GetSection(AdjuntosOptions.Seccion))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicios.AddOptions<AlmacenObjetosOptions>()
+            .Bind(configuracion.GetSection(AlmacenObjetosOptions.Seccion))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         servicios.AddOptions<CacheOptions>()
             .Bind(configuracion.GetSection(CacheOptions.Seccion))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicios.AddOptions<ValkeyOptions>()
+            .Bind(configuracion.GetSection(ValkeyOptions.Seccion))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 

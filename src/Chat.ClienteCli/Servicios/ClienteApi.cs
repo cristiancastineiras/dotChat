@@ -214,14 +214,157 @@ public sealed class ClienteApi
 
     /// <summary>Publica un mensaje sin usar el hub (útil para el comando «enviar»).</summary>
     /// <param name="salaId">Sala destino.</param>
-    /// <param name="texto">Contenido en claro.</param>
+    /// <param name="texto">Contenido en claro; puede ir vacío si se adjunta una imagen.</param>
+    /// <param name="adjuntoId">Imagen ya subida que acompaña al mensaje.</param>
     /// <param name="cancelacion">Token de cancelación.</param>
-    public Task<MensajeDto> EnviarMensajeAsync(Guid salaId, string texto, CancellationToken cancelacion = default)
+    public Task<MensajeDto> EnviarMensajeAsync(
+        Guid salaId,
+        string texto,
+        Guid? adjuntoId = null,
+        CancellationToken cancelacion = default)
         => EnviarAsync<MensajeDto>(
             HttpMethod.Post,
             "/api/mensajes",
-            new SolicitudEnviarMensajeDto(salaId, texto, Guid.CreateVersion7()),
+            new SolicitudEnviarMensajeDto(salaId, texto, Guid.CreateVersion7(), adjuntoId),
             cancelacion);
+
+    /// <summary>
+    /// Sube una imagen del disco a una sala y devuelve el adjunto con el que
+    /// publicarla en un mensaje.
+    /// </summary>
+    /// <param name="salaId">Sala destino.</param>
+    /// <param name="rutaArchivo">Ruta local de la imagen.</param>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    /// <exception cref="ExcepcionApi">Si el fichero no existe o el servidor lo rechaza.</exception>
+    public async Task<AdjuntoDto> SubirAdjuntoAsync(
+        Guid salaId,
+        string rutaArchivo,
+        CancellationToken cancelacion = default)
+    {
+        var ruta = Path.GetFullPath(rutaArchivo);
+
+        if (!File.Exists(ruta))
+        {
+            throw new ExcepcionApi(HttpStatusCode.NotFound, $"No se encuentra el fichero '{rutaArchivo}'.");
+        }
+
+        // El fichero se transmite en flujo: no se carga entero en memoria del cliente
+        // solo para volcarlo a la red.
+        await using var flujo = File.OpenRead(ruta);
+
+        using var formulario = new MultipartFormDataContent();
+        using var contenido = new StreamContent(flujo);
+        contenido.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        formulario.Add(contenido, "archivo", Path.GetFileName(ruta));
+
+        var token = await ObtenerTokenVigenteAsync(cancelacion).ConfigureAwait(false);
+
+        using var peticion = new HttpRequestMessage(HttpMethod.Post, $"/api/adjuntos?salaId={salaId}")
+        {
+            Content = formulario
+        };
+        peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Esta llamada no comparte el reintento genérico ante 401 porque el flujo del
+        // fichero ya se habría consumido y no se puede reenviar tal cual.
+        using var respuesta = await _http.SendAsync(peticion, cancelacion).ConfigureAwait(false);
+
+        return await LeerRespuestaAsync<AdjuntoDto>(respuesta, cancelacion).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Descarga en memoria el contenido de un adjunto. Se usa para las imágenes, que se
+    /// dibujan en la consola y cuyo tamaño el servidor acota al normalizarlas.
+    /// </summary>
+    /// <param name="adjuntoId">Adjunto solicitado.</param>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    /// <returns>Los bytes del contenido.</returns>
+    public async Task<byte[]> DescargarAdjuntoAsync(Guid adjuntoId, CancellationToken cancelacion = default)
+    {
+        using var respuesta = await AbrirAdjuntoAsync(adjuntoId, cancelacion).ConfigureAwait(false);
+        return await respuesta.Content.ReadAsByteArrayAsync(cancelacion).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Descarga un adjunto directamente a disco, sin pasar por memoria.
+    /// </summary>
+    /// <remarks>
+    /// Es la ruta de los archivos, que pueden ser de decenas de megas. Se escribe a un
+    /// fichero temporal y se renombra al terminar: así una descarga interrumpida no
+    /// deja en la carpeta un archivo a medias con pinta de estar completo.
+    /// </remarks>
+    /// <param name="adjuntoId">Adjunto solicitado.</param>
+    /// <param name="rutaDestino">Ruta final del fichero.</param>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    /// <returns>Número de bytes escritos.</returns>
+    public async Task<long> DescargarAdjuntoAArchivoAsync(
+        Guid adjuntoId,
+        string rutaDestino,
+        CancellationToken cancelacion = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rutaDestino);
+
+        using var respuesta = await AbrirAdjuntoAsync(adjuntoId, cancelacion).ConfigureAwait(false);
+
+        var temporal = rutaDestino + ".parcial";
+
+        try
+        {
+            await using (var origen = await respuesta.Content.ReadAsStreamAsync(cancelacion).ConfigureAwait(false))
+            await using (var destino = File.Create(temporal))
+            {
+                await origen.CopyToAsync(destino, cancelacion).ConfigureAwait(false);
+            }
+
+            File.Move(temporal, rutaDestino, overwrite: true);
+
+            return new FileInfo(rutaDestino).Length;
+        }
+        catch
+        {
+            if (File.Exists(temporal))
+            {
+                File.Delete(temporal);
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Pide un adjunto y devuelve la respuesta con el cuerpo aún sin leer, para que
+    /// quien llama decida si lo quiere en memoria o en disco.
+    /// </summary>
+    /// <param name="adjuntoId">Adjunto solicitado.</param>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    private async Task<HttpResponseMessage> AbrirAdjuntoAsync(Guid adjuntoId, CancellationToken cancelacion)
+    {
+        var ruta = $"/api/adjuntos/{adjuntoId}";
+        var token = await ObtenerTokenVigenteAsync(cancelacion).ConfigureAwait(false);
+
+        var respuesta = await EnviarConTokenAsync(HttpMethod.Get, ruta, null, token, cancelacion, enFlujo: true)
+            .ConfigureAwait(false);
+
+        if (respuesta.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            respuesta.Dispose();
+
+            var renovada = await RefrescarAsync(cancelacion).ConfigureAwait(false);
+            respuesta = await EnviarConTokenAsync(
+                HttpMethod.Get, ruta, null, renovada.TokenAcceso, cancelacion, enFlujo: true)
+                .ConfigureAwait(false);
+        }
+
+        if (!respuesta.IsSuccessStatusCode)
+        {
+            using (respuesta)
+            {
+                throw await ConstruirErrorAsync(respuesta, cancelacion).ConfigureAwait(false);
+            }
+        }
+
+        return respuesta;
+    }
 
     /// <summary>
     /// Busca una conversación por nombre (insensible a mayúsculas). Mira primero
@@ -356,12 +499,22 @@ public sealed class ClienteApi
     }
 
     /// <summary>Construye y envía una petición con el token indicado.</summary>
+    /// <param name="metodo">Verbo HTTP.</param>
+    /// <param name="ruta">Ruta relativa.</param>
+    /// <param name="cuerpo">Cuerpo a serializar como JSON, si lo hay.</param>
+    /// <param name="token">Token de acceso.</param>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    /// <param name="enFlujo">
+    /// Devuelve el control en cuanto llegan las cabeceras, sin esperar al cuerpo. Es lo
+    /// que permite descargar un archivo grande a disco sin cargarlo antes en memoria.
+    /// </param>
     private async Task<HttpResponseMessage> EnviarConTokenAsync(
         HttpMethod metodo,
         string ruta,
         object? cuerpo,
         string token,
-        CancellationToken cancelacion)
+        CancellationToken cancelacion,
+        bool enFlujo = false)
     {
         using var peticion = new HttpRequestMessage(metodo, ruta);
         peticion.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -371,7 +524,11 @@ public sealed class ClienteApi
             peticion.Content = JsonContent.Create(cuerpo, cuerpo.GetType(), options: OpcionesJson);
         }
 
-        return await _http.SendAsync(peticion, cancelacion).ConfigureAwait(false);
+        var finalizacion = enFlujo
+            ? HttpCompletionOption.ResponseHeadersRead
+            : HttpCompletionOption.ResponseContentRead;
+
+        return await _http.SendAsync(peticion, finalizacion, cancelacion).ConfigureAwait(false);
     }
 
     /// <summary>Deserializa una respuesta correcta o traduce el error del servidor.</summary>

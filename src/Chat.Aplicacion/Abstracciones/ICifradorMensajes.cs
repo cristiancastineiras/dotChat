@@ -28,4 +28,21 @@ public interface ICifradorMensajes
     /// <param name="textoPlano">Texto en claro resultante, o <c>null</c> si falla.</param>
     /// <returns><c>true</c> si el descifrado fue correcto.</returns>
     bool IntentarDescifrar(string textoCifrado, out string? textoPlano);
+
+    /// <summary>
+    /// Cifra un contenido binario, como la imagen de un adjunto.
+    /// </summary>
+    /// <remarks>
+    /// Usa la misma clave que el texto pero un contexto asociado distinto, de modo que
+    /// un criptograma de mensaje no pueda hacerse pasar por el de una imagen ni al revés.
+    /// </remarks>
+    /// <param name="datosPlanos">Contenido original.</param>
+    /// <returns>Criptograma binario, con nonce y etiqueta de autenticación incluidos.</returns>
+    byte[] CifrarBinario(ReadOnlySpan<byte> datosPlanos);
+
+    /// <summary>Intenta descifrar un contenido binario sin lanzar excepciones.</summary>
+    /// <param name="datosCifrados">Criptograma generado por <see cref="CifrarBinario"/>.</param>
+    /// <param name="datosPlanos">Contenido en claro resultante, o <c>null</c> si falla.</param>
+    /// <returns><c>true</c> si el descifrado fue correcto.</returns>
+    bool IntentarDescifrarBinario(byte[] datosCifrados, out byte[]? datosPlanos);
 }

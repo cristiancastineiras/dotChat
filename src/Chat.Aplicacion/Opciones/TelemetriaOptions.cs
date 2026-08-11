@@ -3,66 +3,84 @@ using System.ComponentModel.DataAnnotations;
 namespace Chat.Aplicacion.Opciones;
 
 /// <summary>
-/// Configuración de la telemetría OpenTelemetry: qué se exporta y a dónde.
-/// Los valores por defecto apuntan al receptor local que escucha OpenTelemetry
-/// Desktop Viewer, de modo que basta con arrancar el visor para ver las trazas.
+/// Destino de una de las tres señales de telemetría.
 /// </summary>
-public sealed class TelemetriaOptions
+/// <remarks>
+/// Cada señal se configura por separado porque en un despliegue real van a sitios
+/// distintos: las trazas a un visor de trazas, los registros a un agregador de
+/// registros y las métricas a un sistema de series temporales. Meterlas todas por el
+/// mismo punto de entrada obligaría a poner un colector delante solo para repartirlas.
+/// </remarks>
+public sealed class DestinoTelemetria
 {
-    /// <summary>Nombre de la sección en appsettings.json.</summary>
-    public const string Seccion = "Telemetria";
-
-    /// <summary>Protocolo OTLP sobre gRPC; el receptor escucha en el puerto 4317.</summary>
+    /// <summary>Protocolo OTLP sobre gRPC; el receptor suele escuchar en el puerto 4317.</summary>
     public const string ProtocoloGrpc = "grpc";
 
     /// <summary>Protocolo OTLP sobre HTTP con carga binaria protobuf; puerto 4318.</summary>
     public const string ProtocoloHttp = "http";
 
-    /// <summary>Punto de entrada por defecto para gRPC.</summary>
-    public const string PuntoEntradaGrpc = "http://localhost:4317";
+    /// <summary>Activa o desactiva esta señal.</summary>
+    public bool Activado { get; set; } = true;
 
-    /// <summary>Punto de entrada por defecto para HTTP.</summary>
-    public const string PuntoEntradaHttp = "http://localhost:4318";
+    /// <summary>Dirección del receptor OTLP.</summary>
+    [Required(ErrorMessage = "El punto de entrada de la señal de telemetría es obligatorio.")]
+    public string PuntoEntrada { get; set; } = "http://localhost:4317";
 
-    /// <summary>Activa o desactiva por completo la exportación de telemetría.</summary>
-    public bool Activada { get; set; } = true;
-
-    /// <summary>
-    /// Dirección del receptor OTLP. Si se deja vacía se usa la que corresponda al
-    /// protocolo elegido.
-    /// </summary>
-    public string PuntoEntrada { get; set; } = string.Empty;
-
-    /// <summary>Protocolo de transporte: <c>grpc</c> (4317) o <c>http</c> (4318).</summary>
+    /// <summary>Protocolo de transporte: <c>grpc</c> o <c>http</c>.</summary>
     [RegularExpression(
         "^(grpc|http)$",
         ErrorMessage = "El protocolo de telemetría debe ser 'grpc' o 'http'.")]
     public string Protocolo { get; set; } = ProtocoloGrpc;
 
-    /// <summary>Nombre del servicio con el que aparece la aplicación en el visor.</summary>
-    [Required(ErrorMessage = "El nombre del servicio de telemetría es obligatorio.")]
-    public string NombreServicio { get; set; } = "dotchat-servidor";
-
-    /// <summary>Exporta trazas (peticiones HTTP, invocaciones del hub, comandos y consultas).</summary>
-    public bool Trazas { get; set; } = true;
-
-    /// <summary>Exporta métricas (contadores propios, ASP.NET Core y tiempo de ejecución).</summary>
-    public bool Metricas { get; set; } = true;
-
-    /// <summary>Exporta los registros de la aplicación como logs OTLP.</summary>
-    public bool Registros { get; set; } = true;
-
-    /// <summary>Devuelve la dirección efectiva del receptor, aplicando el valor por defecto.</summary>
-    public Uri ResolverPuntoEntrada()
-    {
-        if (!string.IsNullOrWhiteSpace(PuntoEntrada))
-        {
-            return new Uri(PuntoEntrada);
-        }
-
-        return new Uri(EsGrpc ? PuntoEntradaGrpc : PuntoEntradaHttp);
-    }
+    /// <summary>
+    /// Cabeceras adicionales, en el formato <c>clave=valor,clave=valor</c> que define
+    /// OTLP. Es por donde viaja la clave de API de Seq.
+    /// </summary>
+    public string Cabeceras { get; set; } = string.Empty;
 
     /// <summary>Indica si el transporte configurado es gRPC.</summary>
     public bool EsGrpc => !string.Equals(Protocolo, ProtocoloHttp, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Devuelve la dirección del receptor.</summary>
+    public Uri ResolverPuntoEntrada() => new(PuntoEntrada);
+}
+
+/// <summary>
+/// Configuración de la telemetría OpenTelemetry: qué se exporta y a dónde.
+/// </summary>
+/// <remarks>
+/// Los valores por defecto apuntan a los servicios que levanta el
+/// <c>docker-compose.yml</c> del repositorio: las trazas y las métricas a Jaeger y los
+/// registros a Seq.
+/// </remarks>
+public sealed class TelemetriaOptions
+{
+    /// <summary>Nombre de la sección en appsettings.json.</summary>
+    public const string Seccion = "Telemetria";
+
+    /// <summary>Activa o desactiva por completo la exportación de telemetría.</summary>
+    public bool Activada { get; set; } = true;
+
+    /// <summary>Nombre del servicio con el que aparece la aplicación en los visores.</summary>
+    [Required(ErrorMessage = "El nombre del servicio de telemetría es obligatorio.")]
+    public string NombreServicio { get; set; } = "dotchat-servidor";
+
+    /// <summary>Entorno de despliegue con el que se etiqueta la telemetría.</summary>
+    public string Entorno { get; set; } = "desarrollo";
+
+    /// <summary>Destino de las trazas: peticiones, invocaciones del hub, comandos y consultas.</summary>
+    [Required]
+    public DestinoTelemetria Trazas { get; set; } = new();
+
+    /// <summary>Destino de las métricas: contadores propios, ASP.NET Core y tiempo de ejecución.</summary>
+    [Required]
+    public DestinoTelemetria Metricas { get; set; } = new();
+
+    /// <summary>Destino de los registros estructurados.</summary>
+    [Required]
+    public DestinoTelemetria Registros { get; set; } = new()
+    {
+        PuntoEntrada = "http://localhost:5341/ingest/otlp/v1/logs",
+        Protocolo = DestinoTelemetria.ProtocoloHttp
+    };
 }

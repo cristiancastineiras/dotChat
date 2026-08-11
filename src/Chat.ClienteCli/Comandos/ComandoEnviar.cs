@@ -27,7 +27,7 @@ public sealed class ComandoEnviar : ComandoBase<ComandoEnviar.Opciones>
 
         /// <summary>Texto del mensaje.</summary>
         [CommandArgument(1, "<mensaje>")]
-        [Description("Texto del mensaje. Enciérrelo entre comillas si contiene espacios.")]
+        [Description("Texto del mensaje. Enciérrelo entre comillas si contiene espacios. Admite atajos como :fuego:.")]
         public string Mensaje { get; init; } = string.Empty;
     }
 
@@ -42,7 +42,9 @@ public sealed class ComandoEnviar : ComandoBase<ComandoEnviar.Opciones>
             .SpinnerStyle(Style.Parse("deepskyblue1"))
             .StartAsync(
                 $"Enviando a '{sala.Nombre}'...",
-                async _ => await _api.EnviarMensajeAsync(sala.Id, opciones.Mensaje, cancelacion).ConfigureAwait(false))
+                async _ => await _api
+                    .EnviarMensajeAsync(sala.Id, opciones.Mensaje, cancelacion: cancelacion)
+                    .ConfigureAwait(false))
             .ConfigureAwait(false);
 
         Presentacion.Exito($"Mensaje enviado a '{sala.Nombre}'.");

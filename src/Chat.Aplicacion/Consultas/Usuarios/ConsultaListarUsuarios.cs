@@ -57,10 +57,15 @@ public sealed class ManejadorListarUsuarios
             cancelacion).ConfigureAwait(false);
 
         // La presencia se resuelve fuera de la caché: es volátil y no debe quedar
-        // congelada durante la vigencia de la entrada cacheada.
+        // congelada durante la vigencia de la entrada cacheada. Se pide en bloque para
+        // no hacer una consulta por usuario.
+        var conectados = await _conexiones
+            .FiltrarConectadosAsync([.. usuarios.Select(usuario => usuario.Id)], cancelacion)
+            .ConfigureAwait(false);
+
         return usuarios
             .AsValueEnumerable()
-            .Select(usuario => usuario with { EnLinea = _conexiones.EstaConectado(usuario.Id) })
+            .Select(usuario => usuario with { EnLinea = conectados.Contains(usuario.Id) })
             .ToArray();
     }
 }

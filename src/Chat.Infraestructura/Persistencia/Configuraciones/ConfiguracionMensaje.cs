@@ -21,11 +21,19 @@ public sealed class ConfiguracionMensaje : IEntityTypeConfiguration<Mensaje>
         constructor.ToTable("Mensajes");
         constructor.HasKey(m => m.Id);
 
+        // Opcional: un mensaje puede ser solo una imagen, sin pie de foto.
         constructor.Property(m => m.TextoCifrado)
-            .IsRequired()
             .HasMaxLength(LongitudMaximaTextoCifrado);
 
         constructor.Property(m => m.FechaEnvio).IsRequired();
+
+        // Relación uno a uno con el adjunto, con la clave ajena del lado del mensaje
+        // porque la imagen se sube antes de que el mensaje exista. El índice único
+        // que EF crea sobre la columna impide reutilizar un adjunto en otro mensaje.
+        constructor.HasOne(m => m.Adjunto)
+            .WithOne(a => a.Mensaje)
+            .HasForeignKey<Mensaje>(m => m.AdjuntoId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Índice principal de lectura: historial de una sala ordenado de más nuevo a más antiguo.
         constructor.HasIndex(m => new { m.SalaId, m.FechaEnvio })

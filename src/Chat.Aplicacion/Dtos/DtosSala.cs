@@ -15,6 +15,11 @@ namespace Chat.Aplicacion.Dtos;
 /// <param name="TotalMiembros">Número de miembros actuales.</param>
 /// <param name="EsMiembro">Indica si quien consulta pertenece a la sala.</param>
 /// <param name="MensajesSinLeer">Mensajes ajenos posteriores a la última lectura de quien consulta.</param>
+/// <param name="UltimoMensaje">Resumen del último mensaje, para la lista de conversaciones.</param>
+/// <param name="InterlocutorEnLinea">
+/// En una conversación directa, indica si la otra persona está conectada. Nulo en el
+/// resto de salas, donde la presencia se consulta por miembro.
+/// </param>
 public sealed record SalaDto(
     Guid Id,
     string Nombre,
@@ -24,11 +29,31 @@ public sealed record SalaDto(
     DateTimeOffset? FechaUltimaActividad,
     int TotalMiembros,
     bool EsMiembro = false,
-    int MensajesSinLeer = 0)
+    int MensajesSinLeer = 0,
+    ResumenMensajeDto? UltimoMensaje = null,
+    bool? InterlocutorEnLinea = null)
 {
     /// <summary>Indica si la sala es una conversación directa entre dos personas.</summary>
     public bool EsDirecta => Tipo == TipoSala.Directa;
 }
+
+/// <summary>
+/// Resumen del último mensaje de una conversación, con lo justo para pintar una línea
+/// de previsualización en la lista de chats.
+/// </summary>
+/// <param name="NombreAutor">Nombre de quien lo escribió.</param>
+/// <param name="EsPropio">Indica si lo escribió quien consulta.</param>
+/// <param name="Texto">Texto en claro, ya recortado; vacío si el mensaje era solo un archivo.</param>
+/// <param name="FechaEnvio">Fecha UTC de envío.</param>
+/// <param name="NombreAdjunto">Nombre del archivo adjunto, si lo llevaba.</param>
+/// <param name="TipoAdjunto">Naturaleza del adjunto, si lo llevaba.</param>
+public sealed record ResumenMensajeDto(
+    string NombreAutor,
+    bool EsPropio,
+    string Texto,
+    DateTimeOffset FechaEnvio,
+    string? NombreAdjunto = null,
+    TipoAdjunto? TipoAdjunto = null);
 
 /// <summary>Datos de entrada para crear una sala.</summary>
 /// <param name="Nombre">Nombre único de la sala.</param>

@@ -15,10 +15,38 @@
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Identity.Stores" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
+  </ItemGroup>
+
+  <!--
+    Proveedor de PostgreSQL. Se usa el servidor relacional como única fuente de
+    verdad: tipos nativos (uuid, timestamptz, bytea), índices parciales reales y
+    concurrencia de escritura, que es lo que exige un chat multiusuario.
+  -->
+  <ItemGroup Label="PostgreSQL">
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Npgsql.OpenTelemetry" Version="10.0.3" />
+  </ItemGroup>
+
+  <!--
+    Almacenamiento de objetos. Se usa el SDK de S3 y no el cliente propio de MinIO:
+    el protocolo es el mismo, y así el día que el almacén deje de ser MinIO y pase a
+    ser S3, Ceph o cualquier otro compatible, solo cambia la configuración.
+  -->
+  <ItemGroup Label="Almacenamiento de objetos">
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.102" />
+  </ItemGroup>
+
+  <!--
+    Piezas que hacen posible ejecutar varias réplicas del servidor: el canal que
+    reparte los mensajes de SignalR entre ellas y el anillo de claves compartido,
+    sin el cual cada réplica cifraría con claves distintas.
+  -->
+  <ItemGroup Label="Escalado horizontal">
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="10.0.10" />
+    <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup Label="Extensiones de host y configuración">
@@ -27,13 +55,32 @@
     <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.10" />
   </ItemGroup>
 
+  <!--
+    Caché en dos niveles: memoria del proceso (L1) sobre Valkey (L2), con un canal
+    de retropropagación que mantiene coherentes las réplicas. Valkey habla el
+    protocolo de Redis, así que se usa el cliente estándar StackExchange.Redis.
+  -->
   <ItemGroup Label="Caché">
     <PackageVersion Include="ZiggyCreatures.FusionCache" Version="2.6.0" />
+    <PackageVersion Include="ZiggyCreatures.FusionCache.Serialization.SystemTextJson" Version="2.6.0" />
+    <PackageVersion Include="ZiggyCreatures.FusionCache.Backplane.StackExchangeRedis" Version="2.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.10" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.10.1" />
   </ItemGroup>
 
   <ItemGroup Label="Interfaz de línea de comandos">
     <PackageVersion Include="Spectre.Console" Version="0.55.0" />
     <PackageVersion Include="Spectre.Console.Cli" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console.ImageSharp" Version="0.55.0" />
+  </ItemGroup>
+
+  <!--
+    Tratamiento de imágenes. El servidor la usa para validar, normalizar y limitar
+    lo que se sube; el cliente, para convertir la imagen en bloques de color que la
+    consola sabe pintar.
+  -->
+  <ItemGroup Label="Imágenes">
+    <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
   <!--

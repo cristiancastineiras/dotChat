@@ -24,9 +24,12 @@ public sealed class RepositorioMensajes : IRepositorioMensajes
         DateTimeOffset? anteriorA,
         CancellationToken cancelacion = default)
     {
+        // Del adjunto se traen solo los metadatos: el binario vive en otra tabla y
+        // esta consulta jamás debe arrastrarlo.
         var consulta = _contexto.Mensajes
             .AsNoTracking()
             .Include(m => m.Usuario)
+            .Include(m => m.Adjunto)
             .Where(m => m.SalaId == salaId);
 
         if (anteriorA is not null)
@@ -54,6 +57,46 @@ public sealed class RepositorioMensajes : IRepositorioMensajes
             : _contexto.Mensajes.CountAsync(m => m.SalaId == salaId.Value, cancelacion);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, UltimoMensajeSala>> ObtenerUltimosPorSalaAsync(
+        IReadOnlyCollection<Guid> salaIds,
+        CancellationToken cancelacion = default)
+    {
+        ArgumentNullException.ThrowIfNull(salaIds);
+
+        if (salaIds.Count == 0)
+        {
+            return new Dictionary<Guid, UltimoMensajeSala>();
+        }
+
+        var identificadores = salaIds as Guid[] ?? [.. salaIds];
+
+        // Agrupar por sala y quedarse con el primero de cada grupo se traduce a un
+        // LATERAL por sala que recorre el índice descendente y para en la primera fila.
+        // Se proyecta a la forma final dentro de la consulta para no traer ni el resto
+        // de columnas del mensaje ni las del adjunto.
+        var ultimos = await _contexto.Mensajes
+            .AsNoTracking()
+            .Where(m => identificadores.Contains(m.SalaId))
+            .GroupBy(m => m.SalaId)
+            .Select(grupo => grupo
+                .OrderByDescending(m => m.FechaEnvio)
+                .ThenByDescending(m => m.Id)
+                .Select(m => new UltimoMensajeSala(
+                    m.SalaId,
+                    m.UsuarioId,
+                    m.Usuario!.UserName,
+                    m.TextoCifrado,
+                    m.FechaEnvio,
+                    m.Adjunto!.NombreArchivo,
+                    m.Adjunto!.Tipo))
+                .First())
+            .ToListAsync(cancelacion)
+            .ConfigureAwait(false);
+
+        return ultimos.ToDictionary(ultimo => ultimo.SalaId);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyDictionary<Guid, int>> ContarNoLeidosPorSalaAsync(
         Guid usuarioId,
         CancellationToken cancelacion = default)
@@ -62,8 +105,8 @@ public sealed class RepositorioMensajes : IRepositorioMensajes
         // nula significa que el usuario no ha abierto la sala desde que se unió.
         //
         // Se escribe como reunión explícita y no como subconsulta correlacionada
-        // porque esta última obligaría a SQLite a usar APPLY, que no soporta. Así se
-        // traduce a un INNER JOIN con GROUP BY, que además aprovecha los índices.
+        // para que se traduzca a un único INNER JOIN con GROUP BY: una sola pasada
+        // sobre los índices, en lugar de un LATERAL por sala.
         var consulta =
             from mensaje in _contexto.Mensajes.AsNoTracking()
             join miembro in _contexto.MiembrosSala.AsNoTracking()

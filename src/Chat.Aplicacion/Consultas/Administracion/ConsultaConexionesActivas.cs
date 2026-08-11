@@ -22,6 +22,6 @@ public sealed class ManejadorConexionesActivas
         CancellationToken cancelacion = default)
     {
         ArgumentNullException.ThrowIfNull(consulta);
-        return Task.FromResult(_conexiones.Listar());
+        return _conexiones.ListarAsync(cancelacion);
     }
 }

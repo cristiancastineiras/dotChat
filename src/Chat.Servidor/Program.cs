@@ -3,14 +3,29 @@ using Chat.Aplicacion.Abstracciones;
 using Chat.Aplicacion.Opciones;
 using Chat.Infraestructura;
 using Chat.Infraestructura.Persistencia;
+using Chat.Infraestructura.Presencia;
 using Chat.Infraestructura.Seguridad;
 using Chat.Servidor.Configuracion;
 using Chat.Servidor.Endpoints;
 using Chat.Servidor.Hubs;
 using Chat.Servidor.Servicios;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
 using ZLogger;
+
+// ---------------------------------------------------------------------------
+// Modo sonda
+// ---------------------------------------------------------------------------
+// El mismo ejecutable sirve de sonda de salud para Docker. Es preferible a meter
+// curl en la imagen de ejecución: no añade paquetes, no amplía la superficie del
+// contenedor y la sonda siempre está en la misma versión que el servidor.
+if (args.Contains("--comprobar-salud", StringComparer.Ordinal))
+{
+    return await ComprobarSaludAsync().ConfigureAwait(false);
+}
 
 var constructor = WebApplication.CreateBuilder(args);
 
@@ -49,19 +64,27 @@ constructor.Services.AgregarAplicacion();
 constructor.Services.AgregarAutenticacionJwt(constructor.Configuration);
 constructor.Services.AgregarLimitacionPeticiones();
 
-constructor.Services.AddSingleton<IRegistroConexiones, RegistroConexiones>();
-constructor.Services.AddSingleton<LimitadorEnvioMensajes>();
 constructor.Services.AddScoped<INotificadorTiempoReal, NotificadorSignalR>();
 constructor.Services.AddHostedService<ServicioMantenimiento>();
+constructor.Services.AddHostedService<ServicioLatidoReplica>();
 
 constructor.Services.AddProblemDetails();
 constructor.Services.AddExceptionHandler<ManejadorExcepcionesGlobal>();
+constructor.Services.AgregarSalud(
+    constructor.Configuration.GetSection(ValkeyOptions.Seccion).GetValue("Activado", true));
+
+// ---------------------------------------------------------------------------
+// Piezas del escalado horizontal
+// ---------------------------------------------------------------------------
+var opcionesValkey = constructor.Configuration
+    .GetSection(ValkeyOptions.Seccion)
+    .Get<ValkeyOptions>() ?? new ValkeyOptions();
 
 var opcionesSignalR = constructor.Configuration
     .GetSection(SignalROptions.Seccion)
     .Get<SignalROptions>() ?? new SignalROptions();
 
-constructor.Services.AddSignalR(opciones =>
+var signalR = constructor.Services.AddSignalR(opciones =>
 {
     opciones.EnableDetailedErrors = opcionesSignalR.DetallarErrores;
     opciones.ClientTimeoutInterval = TimeSpan.FromSeconds(opcionesSignalR.SegundosTiempoEsperaCliente);
@@ -69,6 +92,49 @@ constructor.Services.AddSignalR(opciones =>
     opciones.HandshakeTimeout = TimeSpan.FromSeconds(opcionesSignalR.SegundosTiempoNegociacion);
     opciones.MaximumReceiveMessageSize = opcionesSignalR.TamanoMaximoMensajeBytes;
 });
+
+if (opcionesValkey.Activado)
+{
+    // Canal entre réplicas. Sin él, un mensaje publicado en una instancia solo llegaría
+    // a los miembros de la sala conectados a esa misma instancia: los demás no verían
+    // nada hasta recargar el historial.
+    signalR.AddStackExchangeRedis(opciones =>
+    {
+        opciones.Configuration = ExtensionesValkey.ConstruirConfiguracion(opcionesValkey);
+        opciones.Configuration.ChannelPrefix =
+            StackExchange.Redis.RedisChannel.Literal($"{opcionesValkey.Prefijo}:signalr");
+    });
+
+    // Anillo de claves compartido. Cada réplica genera el suyo al arrancar si no hay
+    // uno común, y entonces lo que cifra una no lo puede descifrar otra.
+    constructor.Services.AddDataProtection()
+        .SetApplicationName("dotchat")
+        .PersistKeysToStackExchangeRedis(
+            StackExchange.Redis.ConnectionMultiplexer.Connect(
+                ExtensionesValkey.ConstruirConfiguracion(opcionesValkey)),
+            $"{opcionesValkey.Prefijo}:claves");
+}
+
+// El tamaño máximo de una subida se decide en un único sitio y se propaga al
+// servidor: así Kestrel corta la transferencia en cuanto se pasa, sin llegar a
+// almacenar un fichero que la aplicación va a rechazar de todos modos.
+var opcionesAdjuntos = constructor.Configuration
+    .GetSection(AdjuntosOptions.Seccion)
+    .Get<AdjuntosOptions>() ?? new AdjuntosOptions();
+
+// Se deja algo de holgura sobre el límite: el envío multiparte añade cabeceras,
+// separadores y el resto de campos del formulario.
+var margenMultiparte = opcionesAdjuntos.TamanoMaximoBytes + (64 * 1024);
+
+constructor.Services.Configure<FormOptions>(opciones =>
+{
+    opciones.MultipartBodyLengthLimit = margenMultiparte;
+    opciones.ValueLengthLimit = 8 * 1024;
+    opciones.MultipartHeadersLengthLimit = 8 * 1024;
+});
+
+constructor.Services.Configure<KestrelServerOptions>(opciones =>
+    opciones.Limits.MaxRequestBodySize = margenMultiparte);
 
 // Solo se confía en las cabeceras de proxy si el despliegue las coloca delante.
 constructor.Services.Configure<ForwardedHeadersOptions>(opciones =>
@@ -86,26 +152,31 @@ try
     var jwt = aplicacion.Services.GetRequiredService<IOptions<JwtOptions>>().Value;
     var cifrado = aplicacion.Services.GetRequiredService<IOptions<CifradoOptions>>().Value;
     var telemetria = aplicacion.Services.GetRequiredService<IOptions<TelemetriaOptions>>().Value;
+    var identidadReplica = aplicacion.Services.GetRequiredService<IdentidadReplica>();
 
     ExtensionesAutenticacion.ValidarClaveFirma(jwt.ClaveFirmaBase64);
 
     registro.LogInformation(
-        "Configuración validada. Emisor={Emisor} Audiencia={Audiencia} HuellaClaveCifrado={Huella}",
+        "Configuración validada. Replica={Replica} Emisor={Emisor} Audiencia={Audiencia} HuellaClaveCifrado={Huella}",
+        identidadReplica.Nombre,
         jwt.Emisor,
         jwt.Audiencia,
         ServicioCifradorMensajes.CalcularHuellaClave(cifrado.ClaveBase64));
 
-    // Deja constancia de a dónde va la telemetría: si el receptor no está levantado,
-    // el exportador falla en silencio y esta línea es la única pista.
+    registro.LogInformation(
+        "Modo de ejecución. Valkey={Valkey} Escalado={Escalado}",
+        opcionesValkey.Activado ? opcionesValkey.Conexion : "desactivado",
+        opcionesValkey.Activado ? "clúster" : "instancia única");
+
+    // Deja constancia de a dónde va cada señal: si un receptor no está levantado, el
+    // exportador falla en silencio y estas líneas son la única pista.
     if (telemetria.Activada)
     {
         registro.LogInformation(
-            "Telemetría activada. Destino={Destino} Protocolo={Protocolo} Trazas={Trazas} Métricas={Metricas} Registros={Registros}",
-            telemetria.ResolverPuntoEntrada(),
-            telemetria.Protocolo,
-            telemetria.Trazas,
-            telemetria.Metricas,
-            telemetria.Registros);
+            "Telemetría activada. Trazas={Trazas} Métricas={Metricas} Registros={Registros}",
+            telemetria.Trazas.Activado ? telemetria.Trazas.PuntoEntrada : "desactivadas",
+            telemetria.Metricas.Activado ? telemetria.Metricas.PuntoEntrada : "desactivadas",
+            telemetria.Registros.Activado ? telemetria.Registros.PuntoEntrada : "desactivados");
     }
     else
     {
@@ -122,12 +193,18 @@ catch (Exception excepcion)
 }
 
 // ---------------------------------------------------------------------------
-// Inicialización de la base de datos
+// Preparación de las dependencias externas
 // ---------------------------------------------------------------------------
+// Con varias réplicas, todas ejecutan esto a la vez. Las dos operaciones son
+// idempotentes y EF Core toma un cerrojo en la base de datos mientras migra, así
+// que la primera en llegar migra y las demás esperan y siguen.
 await using (var ambito = aplicacion.Services.CreateAsyncScope())
 {
     var inicializador = ambito.ServiceProvider.GetRequiredService<InicializadorBaseDatos>();
     await inicializador.InicializarAsync().ConfigureAwait(false);
+
+    var almacen = ambito.ServiceProvider.GetRequiredService<IAlmacenObjetos>();
+    await almacen.PrepararAsync().ConfigureAwait(false);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +220,12 @@ if (!aplicacion.Environment.IsDevelopment())
     aplicacion.UseHsts();
 }
 
-aplicacion.UseHttpsRedirection();
+// Detrás de un balanceador, quien termina TLS es él y aquí solo llega tráfico en
+// claro por la red interna: redirigir desde aquí provocaría un bucle de redirecciones.
+if (constructor.Configuration.GetValue("Servidor:RedirigirHttps", defaultValue: true))
+{
+    aplicacion.UseHttpsRedirection();
+}
 
 // Cabeceras de endurecimiento aplicadas a todas las respuestas.
 aplicacion.Use(async (contexto, siguiente) =>
@@ -165,11 +247,13 @@ aplicacion.UseAuthorization();
 // ---------------------------------------------------------------------------
 // Rutas
 // ---------------------------------------------------------------------------
+aplicacion.MapearSalud();
 aplicacion.MapearEndpointsDiagnostico();
 aplicacion.MapearEndpointsAutenticacion();
 aplicacion.MapearEndpointsUsuarios();
 aplicacion.MapearEndpointsSalas();
 aplicacion.MapearEndpointsMensajes();
+aplicacion.MapearEndpointsAdjuntos();
 aplicacion.MapearEndpointsAdministracion();
 
 aplicacion.MapHub<ChatHub>(opcionesSignalR.RutaHub);
@@ -177,6 +261,32 @@ aplicacion.MapHub<ChatHub>(opcionesSignalR.RutaHub);
 registro.LogInformation("Servidor de dotChat iniciado. Hub={RutaHub}", opcionesSignalR.RutaHub);
 
 await aplicacion.RunAsync().ConfigureAwait(false);
+
+return 0;
+
+/// <summary>
+/// Pregunta a la instancia local si está viva. Devuelve 0 si contesta y 1 si no,
+/// que es lo que espera la instrucción <c>HEALTHCHECK</c> de Docker.
+/// </summary>
+static async Task<int> ComprobarSaludAsync()
+{
+    var puerto = Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS") ?? "8080";
+
+    using var cliente = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+
+    try
+    {
+        using var respuesta = await cliente
+            .GetAsync(new Uri($"http://127.0.0.1:{puerto}/salud/vivo"))
+            .ConfigureAwait(false);
+
+        return respuesta.IsSuccessStatusCode ? 0 : 1;
+    }
+    catch (Exception excepcion) when (excepcion is HttpRequestException or TaskCanceledException)
+    {
+        return 1;
+    }
+}
 
 /// <summary>
 /// Punto de entrada del servidor. Se declara explícitamente para que el proyecto

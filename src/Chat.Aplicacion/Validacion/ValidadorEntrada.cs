@@ -36,6 +36,15 @@ public static partial class ValidadorEntrada
     /// <summary>Longitud máxima de un correo electrónico.</summary>
     public const int LongitudMaximaEmail = 254;
 
+    /// <summary>Longitud máxima del nombre de un fichero adjunto.</summary>
+    public const int LongitudMaximaNombreArchivo = 128;
+
+    /// <summary>
+    /// Unión de secuencia («zero width joiner»). Es el pegamento de los emojis
+    /// compuestos: sin él, 👨‍👩‍👧 se descompone en tres personas sueltas.
+    /// </summary>
+    private const char UnionSecuencia = '\u200D';
+
     [GeneratedRegex(@"^[a-zA-Z0-9._-]+$", RegexOptions.CultureInvariant)]
     private static partial Regex PatronNombreUsuario();
 
@@ -173,7 +182,7 @@ public static partial class ValidadorEntrada
     /// <exception cref="ExcepcionValidacion">Si está vacío o excede la longitud máxima.</exception>
     public static string ValidarTextoMensaje(string? valor, int longitudMaxima)
     {
-        var limpio = Sanear(valor);
+        var limpio = Sanear(valor, permitirSecuenciasEmoji: true);
 
         if (limpio.Length == 0)
         {
@@ -188,6 +197,74 @@ public static partial class ValidadorEntrada
         }
 
         return limpio;
+    }
+
+    /// <summary>
+    /// Valida el texto opcional que acompaña a una imagen. A diferencia de
+    /// <see cref="ValidarTextoMensaje"/>, admite que no haya nada que escribir.
+    /// </summary>
+    /// <param name="valor">Texto recibido del cliente.</param>
+    /// <param name="longitudMaxima">Longitud máxima permitida según la configuración.</param>
+    /// <returns>Texto saneado, o <c>null</c> si venía vacío.</returns>
+    /// <exception cref="ExcepcionValidacion">Si excede la longitud máxima.</exception>
+    public static string? ValidarPieDeFoto(string? valor, int longitudMaxima)
+    {
+        var limpio = Sanear(valor, permitirSecuenciasEmoji: true);
+
+        if (limpio.Length == 0)
+        {
+            return null;
+        }
+
+        if (limpio.Length > longitudMaxima)
+        {
+            throw new ExcepcionValidacion(
+                "texto",
+                $"El texto que acompaña a la imagen no puede superar {longitudMaxima} caracteres.");
+        }
+
+        return limpio;
+    }
+
+    /// <summary>
+    /// Valida y sanea el nombre de un fichero adjunto. Solo se conserva el nombre
+    /// propiamente dicho: se descartan rutas y caracteres que confundirían al sistema
+    /// de archivos de quien lo descargue.
+    /// </summary>
+    /// <param name="valor">Nombre recibido del cliente.</param>
+    /// <returns>Nombre saneado; nunca vacío.</returns>
+    public static string ValidarNombreArchivo(string? valor)
+    {
+        // El cliente puede mandar «..\..\etc\passwd» o una ruta absoluta: nos quedamos
+        // solo con el último tramo y, aun así, lo saneamos carácter a carácter.
+        var soloNombre = Sanear(valor);
+        var separador = soloNombre.LastIndexOfAny(['/', '\\', ':']);
+
+        if (separador >= 0)
+        {
+            soloNombre = soloNombre[(separador + 1)..];
+        }
+
+        var constructor = new StringBuilder(soloNombre.Length);
+
+        foreach (var caracter in soloNombre)
+        {
+            constructor.Append(
+                char.IsAsciiLetterOrDigit(caracter) || caracter is '.' or '-' or '_' or ' '
+                    ? caracter
+                    : '_');
+        }
+
+        var limpio = constructor.ToString().Trim(' ', '.');
+
+        if (limpio.Length == 0)
+        {
+            return "imagen";
+        }
+
+        return limpio.Length > LongitudMaximaNombreArchivo
+            ? limpio[..LongitudMaximaNombreArchivo]
+            : limpio;
     }
 
     /// <summary>Valida que un identificador no sea el valor vacío.</summary>
@@ -224,8 +301,15 @@ public static partial class ValidadorEntrada
     /// caracteres invisibles usados para suplantar identidades.
     /// </summary>
     /// <param name="valor">Cadena original.</param>
+    /// <param name="permitirSecuenciasEmoji">
+    /// Conserva la unión de secuencia, el único carácter invisible que hace falta para
+    /// que los emojis compuestos —familias, profesiones, banderas— lleguen enteros.
+    /// Solo se activa para el cuerpo de los mensajes: en los nombres de usuario y de
+    /// sala, donde un carácter invisible sirve para suplantar a alguien, se sigue
+    /// descartando todo.
+    /// </param>
     /// <returns>Cadena saneada (nunca <c>null</c>).</returns>
-    public static string Sanear(string? valor)
+    public static string Sanear(string? valor, bool permitirSecuenciasEmoji = false)
     {
         if (string.IsNullOrWhiteSpace(valor))
         {
@@ -238,8 +322,16 @@ public static partial class ValidadorEntrada
 
         foreach (var caracter in normalizado)
         {
-            // Se descartan controles y formateadores invisibles (categoría Cf: RTL override, ZWJ...).
-            if (char.IsControl(caracter) || CharUnicodeInfo.GetUnicodeCategory(caracter) == UnicodeCategory.Format)
+            // La unión de secuencia es el único formateador que se conserva, y solo
+            // si une algo: al principio de la cadena no tendría nada que unir.
+            var esUnionUtil = permitirSecuenciasEmoji
+                && caracter == UnionSecuencia
+                && constructor.Length > 0;
+
+            // Del resto de controles y formateadores invisibles (categoría Cf: anulación
+            // de dirección de escritura, marcas de orden de bytes...) no se conserva ninguno.
+            if (!esUnionUtil
+                && (char.IsControl(caracter) || CharUnicodeInfo.GetUnicodeCategory(caracter) == UnicodeCategory.Format))
             {
                 espacioPendiente = constructor.Length > 0;
                 continue;

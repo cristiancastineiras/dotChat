@@ -2,7 +2,10 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Chat.Aplicacion.Opciones;
 
-/// <summary>Configuración de la caché distribuida en memoria (FusionCache).</summary>
+/// <summary>
+/// Duraciones de las entradas de caché. El emplazamiento físico —memoria del proceso
+/// y, si está activo, Valkey— se configura aparte en <see cref="ValkeyOptions"/>.
+/// </summary>
 public sealed class CacheOptions
 {
     /// <summary>Nombre de la sección en appsettings.json.</summary>

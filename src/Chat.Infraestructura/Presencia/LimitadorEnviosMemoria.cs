@@ -1,16 +1,16 @@
 using System.Collections.Concurrent;
 using System.Threading.RateLimiting;
+using Chat.Aplicacion.Abstracciones;
 using Chat.Aplicacion.Opciones;
 using Microsoft.Extensions.Options;
 
-namespace Chat.Servidor.Servicios;
+namespace Chat.Infraestructura.Presencia;
 
 /// <summary>
-/// Limitador de envíos por usuario para el hub de SignalR.
-/// El middleware de limitación de ASP.NET Core solo cubre peticiones HTTP; las
-/// invocaciones dentro de una conexión ya establecida necesitan este control propio.
+/// Limitador de envíos local al proceso, para cuando Valkey está desactivado y el
+/// servidor corre en una sola instancia.
 /// </summary>
-public sealed class LimitadorEnvioMensajes : IDisposable
+public sealed class LimitadorEnviosMemoria : ILimitadorEnvios, IDisposable
 {
     private readonly ConcurrentDictionary<Guid, RateLimiter> _limitadores = new();
     private readonly SignalROptions _opciones;
@@ -18,16 +18,14 @@ public sealed class LimitadorEnvioMensajes : IDisposable
 
     /// <summary>Crea el limitador.</summary>
     /// <param name="opciones">Opciones de SignalR, que definen el máximo por minuto.</param>
-    public LimitadorEnvioMensajes(IOptions<SignalROptions> opciones)
+    public LimitadorEnviosMemoria(IOptions<SignalROptions> opciones)
     {
         ArgumentNullException.ThrowIfNull(opciones);
         _opciones = opciones.Value;
     }
 
-    /// <summary>Intenta consumir un permiso de envío para el usuario indicado.</summary>
-    /// <param name="usuarioId">Usuario que envía.</param>
-    /// <returns><c>true</c> si el envío está permitido.</returns>
-    public bool IntentarConsumir(Guid usuarioId)
+    /// <inheritdoc />
+    public Task<bool> IntentarConsumirAsync(Guid usuarioId, CancellationToken cancelacion = default)
     {
         ObjectDisposedException.ThrowIf(_liberado, this);
 
@@ -42,17 +40,7 @@ public sealed class LimitadorEnvioMensajes : IDisposable
             }));
 
         using var permiso = limitador.AttemptAcquire();
-        return permiso.IsAcquired;
-    }
-
-    /// <summary>Libera el limitador asociado a un usuario que ya no tiene conexiones.</summary>
-    /// <param name="usuarioId">Usuario a olvidar.</param>
-    public void Olvidar(Guid usuarioId)
-    {
-        if (_limitadores.TryRemove(usuarioId, out var limitador))
-        {
-            limitador.Dispose();
-        }
+        return Task.FromResult(permiso.IsAcquired);
     }
 
     /// <inheritdoc />
