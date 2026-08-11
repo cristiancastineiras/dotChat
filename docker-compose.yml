@@ -8,8 +8,8 @@
 #  o, mejor, con el guion que además genera los secretos y espera a que todo
 #  esté sano:
 #
-#      ./arrancar.ps1        (Windows)
-#      ./arrancar.sh         (Linux y macOS)
+#      ./scripts/arrancar.ps1        (Windows)
+#      ./scripts/arrancar.sh         (Linux y macOS)
 #
 #  Para probar el escalado horizontal, basta con pedir más réplicas:
 #
@@ -87,9 +87,10 @@ services:
     volumes:
       - ./despliegue/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - servidor
+      servidor:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/salud/vivo"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/salud/vivo"]
       interval: 10s
       timeout: 5s
       retries: 10
