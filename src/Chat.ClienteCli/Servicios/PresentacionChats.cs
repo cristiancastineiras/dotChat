@@ -36,7 +36,7 @@ public static class PresentacionChats
 
         var contenido = new Markup(
             $"[bold {Presentacion.ColorPrincipal}]dotChat[/]  [grey]·[/]  " +
-            $"[bold]{Presentacion.Escapar(nombreUsuario)}[/]  [grey]·[/]  " +
+            $"[{Presentacion.ColorDe(nombreUsuario)}]●[/] [bold]{Presentacion.Escapar(nombreUsuario)}[/]  [grey]·[/]  " +
             $"{EtiquetaEstado(estadoConexion)}  [grey]·[/]  {resumen}\n" +
             $"[grey]{Presentacion.Escapar(servidor)}[/]");
 
@@ -80,7 +80,7 @@ public static class PresentacionChats
         AnsiConsole.MarkupLine(
             "[grey]↑↓[/] moverse   [grey]intro[/] abrir   [grey]n[/] nuevo privado   " +
             "[grey]s[/] salas   [grey]c[/] crear sala   [grey]u[/] usuarios   " +
-            "[grey]r[/] refrescar   [grey]q[/] salir");
+            "[grey]p[/] cuenta   [grey]r[/] refrescar   [grey]q[/] salir");
     }
 
     /// <summary>Compone la línea de una conversación.</summary>

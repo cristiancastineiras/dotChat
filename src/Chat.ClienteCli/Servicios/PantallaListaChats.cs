@@ -21,6 +21,9 @@ public enum AccionLista
     /// <summary>Ver la lista de usuarios.</summary>
     VerUsuarios,
 
+    /// <summary>Abrir el menú de cuenta: cambiar de usuario o cerrar sesión.</summary>
+    Cuenta,
+
     /// <summary>Cerrar el cliente.</summary>
     Salir
 }
@@ -256,6 +259,9 @@ public sealed class PantallaListaChats
             case ConsoleKey.R:
                 Invalidar();
                 return null;
+
+            case ConsoleKey.P:
+                return new ResultadoLista(AccionLista.Cuenta);
 
             case ConsoleKey.Q or ConsoleKey.Escape:
                 return new ResultadoLista(AccionLista.Salir);

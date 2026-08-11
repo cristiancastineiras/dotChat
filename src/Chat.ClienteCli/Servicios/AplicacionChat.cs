@@ -50,29 +50,124 @@ public sealed class AplicacionChat
         _opciones = opciones.Value;
     }
 
+    /// <summary>Qué hacer al salir de la sesión de un usuario.</summary>
+    private enum DestinoTrasSesion
+    {
+        /// <summary>Cerrar el cliente por completo.</summary>
+        SalirDelTodo,
+
+        /// <summary>Volver a pedir credenciales, sin reiniciar el proceso.</summary>
+        CambiarCuenta
+    }
+
+    /// <summary>Qué eligió el usuario en el menú de cuenta.</summary>
+    private enum DestinoCuenta
+    {
+        /// <summary>Volver a la lista tal cual, sin tocar la sesión.</summary>
+        Cancelar,
+
+        /// <summary>Cerrar la sesión actual y autenticarse con otra cuenta.</summary>
+        CambiarCuenta,
+
+        /// <summary>Cerrar la sesión actual y salir del cliente.</summary>
+        CerrarSesionYSalir
+    }
+
     /// <summary>Ejecuta la aplicación hasta que el usuario la cierra.</summary>
     /// <param name="cancelacion">Token de cancelación.</param>
     /// <returns>Código de salida del proceso.</returns>
     public async Task<int> EjecutarAsync(CancellationToken cancelacion = default)
     {
-        var sesion = await AsegurarSesionAsync(cancelacion).ConfigureAwait(false);
-
-        if (sesion is null)
+        // El bucle exterior vuelve a arrancar cuando el usuario cambia de cuenta desde
+        // el menú de la lista, sin reiniciar el proceso ni perder la terminal.
+        while (!cancelacion.IsCancellationRequested)
         {
-            return 1;
+            var sesion = await IniciarSesionConReintentosAsync(cancelacion).ConfigureAwait(false);
+
+            if (sesion is null)
+            {
+                return 1;
+            }
+
+            var destino = await EjecutarSesionAsync(sesion, cancelacion).ConfigureAwait(false);
+
+            if (destino == DestinoTrasSesion.SalirDelTodo)
+            {
+                Presentacion.LimpiarPantalla();
+                AnsiConsole.MarkupLine("[grey]Hasta luego.[/]");
+                return 0;
+            }
         }
 
-        await ConectarAsync(cancelacion).ConfigureAwait(false);
+        return 0;
+    }
 
+    /// <summary>
+    /// Asegura una sesión utilizable y la conexión con el hub. Un token guardado que
+    /// ya no sirve (refresco caducado, servidor reinstalado...) no tumba la
+    /// aplicación: se descarta la sesión local y se vuelve a pedir credenciales.
+    /// </summary>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    /// <returns>La sesión activa y conectada, o <c>null</c> si el usuario desistió.</returns>
+    private async Task<SesionAlmacenada?> IniciarSesionConReintentosAsync(CancellationToken cancelacion)
+    {
+        while (true)
+        {
+            var sesion = await AsegurarSesionAsync(cancelacion).ConfigureAwait(false);
+
+            if (sesion is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                await ConectarAsync(cancelacion).ConfigureAwait(false);
+                return sesion;
+            }
+            catch (Exception excepcion) when (excepcion is ExcepcionApi or HttpRequestException)
+            {
+                Presentacion.Error($"La sesión guardada ya no es válida ({excepcion.Message}). Inicie sesión de nuevo.");
+                _api.CerrarSesion();
+            }
+        }
+    }
+
+    /// <summary>Muestra la lista y atiende las acciones mientras dure la sesión.</summary>
+    /// <param name="sesion">Sesión activa.</param>
+    /// <param name="cancelacion">Token de cancelación.</param>
+    /// <returns>Qué hacer cuando la sesión termina.</returns>
+    private async Task<DestinoTrasSesion> EjecutarSesionAsync(SesionAlmacenada sesion, CancellationToken cancelacion)
+    {
         while (!cancelacion.IsCancellationRequested)
         {
             var resultado = await _lista.MostrarAsync(sesion, cancelacion).ConfigureAwait(false);
 
             if (resultado.Accion == AccionLista.Salir)
             {
-                Presentacion.LimpiarPantalla();
-                AnsiConsole.MarkupLine("[grey]Hasta luego.[/]");
-                return 0;
+                return DestinoTrasSesion.SalirDelTodo;
+            }
+
+            if (resultado.Accion == AccionLista.Cuenta)
+            {
+                var eleccion = GestionarCuenta(sesion);
+
+                if (eleccion == DestinoCuenta.Cancelar)
+                {
+                    // El menú de cuenta ha pintado encima de la lista: hay que forzar
+                    // un repintado o se quedaría en pantalla al volver.
+                    _lista.Invalidar();
+                    continue;
+                }
+
+                // Tanto para cambiar de cuenta como para cerrar sesión y salir hace
+                // falta soltar la conexión del hub: lleva el token de quien se va.
+                await _tiempoReal.DesconectarAsync().ConfigureAwait(false);
+                _api.CerrarSesion();
+
+                return eleccion == DestinoCuenta.CambiarCuenta
+                    ? DestinoTrasSesion.CambiarCuenta
+                    : DestinoTrasSesion.SalirDelTodo;
             }
 
             await AtenderAsync(resultado, sesion, cancelacion).ConfigureAwait(false);
@@ -82,7 +177,29 @@ public sealed class AplicacionChat
             _lista.Invalidar();
         }
 
-        return 0;
+        return DestinoTrasSesion.SalirDelTodo;
+    }
+
+    /// <summary>Muestra el menú de cuenta y devuelve lo que ha elegido el usuario.</summary>
+    /// <param name="sesion">Sesión activa.</param>
+    private static DestinoCuenta GestionarCuenta(SesionAlmacenada sesion)
+    {
+        Presentacion.LimpiarPantalla();
+        Presentacion.Cabecera("Cuenta");
+        Presentacion.PanelSesion(sesion);
+        AnsiConsole.WriteLine();
+
+        var eleccion = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("¿Qué quieres hacer?")
+                .AddChoices("Cambiar de cuenta", "Cerrar sesión y salir", "Cancelar"));
+
+        return eleccion switch
+        {
+            "Cambiar de cuenta" => DestinoCuenta.CambiarCuenta,
+            "Cerrar sesión y salir" => DestinoCuenta.CerrarSesionYSalir,
+            _ => DestinoCuenta.Cancelar
+        };
     }
 
     /// <summary>Ejecuta la acción elegida en la lista.</summary>
@@ -143,24 +260,39 @@ public sealed class AplicacionChat
         Presentacion.LimpiarPantalla();
         Presentacion.Banner(_api.UrlServidor);
 
-        var eleccion = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[grey]No hay ninguna sesión iniciada.[/]")
-                .AddChoices("Iniciar sesión", "Crear una cuenta", "Salir"));
-
-        if (eleccion == "Salir")
+        // Un fallo aquí (contraseña equivocada, usuario ya existente, servidor caído...)
+        // no debe cerrar la aplicación: se avisa y se vuelve a preguntar.
+        while (!cancelacion.IsCancellationRequested)
         {
-            return null;
+            var eleccion = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("[grey]No hay ninguna sesión iniciada.[/]")
+                    .AddChoices("Iniciar sesión", "Crear una cuenta", "Salir"));
+
+            if (eleccion == "Salir")
+            {
+                return null;
+            }
+
+            var usuario = AnsiConsole.Ask<string>("Usuario:");
+            var clave = AnsiConsole.Prompt(new TextPrompt<string>("Contraseña:").Secret());
+
+            try
+            {
+                return eleccion == "Iniciar sesión"
+                    ? await _api.IniciarSesionAsync(usuario, clave, cancelacion).ConfigureAwait(false)
+                    : await _api
+                        .RegistrarAsync(usuario, AnsiConsole.Ask<string>("Correo:"), clave, cancelacion)
+                        .ConfigureAwait(false);
+            }
+            catch (Exception excepcion) when (excepcion is ExcepcionApi or HttpRequestException)
+            {
+                Presentacion.Error(excepcion.Message);
+                AnsiConsole.WriteLine();
+            }
         }
 
-        var usuario = AnsiConsole.Ask<string>("Usuario:");
-        var clave = AnsiConsole.Prompt(new TextPrompt<string>("Contraseña:").Secret());
-
-        return eleccion == "Iniciar sesión"
-            ? await _api.IniciarSesionAsync(usuario, clave, cancelacion).ConfigureAwait(false)
-            : await _api
-                .RegistrarAsync(usuario, AnsiConsole.Ask<string>("Correo:"), clave, cancelacion)
-                .ConfigureAwait(false);
+        return null;
     }
 
     /// <summary>Abre la conexión con el hub antes de entrar en la lista.</summary>
