@@ -70,6 +70,17 @@ public sealed class ClienteTiempoReal : IAsyncDisposable, IDisposable
                 opciones.AccessTokenProvider = async () =>
                     await _api.ObtenerTokenVigenteAsync(CancellationToken.None).ConfigureAwait(false);
 
+                // Con varias réplicas detrás de un balanceador sin afinidad de sesión
+                // (nginx por round robin, ver docker-compose.yml), el "negotiate" de
+                // SignalR y la conexión real del transporte pueden caer en réplicas
+                // distintas: la segunda no conoce el id que negoció la primera y
+                // responde 404 ("No Connection with that ID"). Al saltar el negociado
+                // y usar solo WebSockets, toda la conversación va por una única
+                // petición HTTP (el upgrade), que se queda pinchada a una sola réplica
+                // durante toda la conexión.
+                opciones.SkipNegotiation = true;
+                opciones.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets;
+
                 if (_opciones.AceptarCertificadosNoConfiables)
                 {
                     opciones.HttpMessageHandlerFactory = _ => new HttpClientHandler
@@ -178,15 +189,24 @@ public sealed class ClienteTiempoReal : IAsyncDisposable, IDisposable
     public Task AvisarEscribiendoAsync(Guid salaId, CancellationToken cancelacion = default)
         => RequerirConexion().SendAsync("Escribiendo", salaId, cancelacion);
 
-    /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// Cierra la conexión actual, si la hay, dejando el cliente listo para abrir otra
+    /// con <see cref="ConectarAsync"/>. Es lo que permite cambiar de cuenta sin
+    /// reiniciar el proceso: la conexión vieja lleva el token de quien cierra sesión.
+    /// </summary>
+    public async Task DesconectarAsync()
     {
-        if (_conexion is not null)
+        if (_conexion is null)
         {
-            await _conexion.DisposeAsync().ConfigureAwait(false);
-            _conexion = null;
+            return;
         }
+
+        await _conexion.DisposeAsync().ConfigureAwait(false);
+        _conexion = null;
     }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync() => await DesconectarAsync().ConfigureAwait(false);
 
     /// <summary>
     /// Liberación síncrona. El contenedor de dependencias la invoca al cerrarse, y
