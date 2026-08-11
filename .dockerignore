@@ -1,0 +1,37 @@
+# =============================================================================
+#  Lo que nunca debe entrar en el contexto de construcción
+# =============================================================================
+#  Sin este fichero, "COPY src/ src/" del Dockerfile arrastra también los bin/
+#  y obj/ compilados en el host (Visual Studio, dotnet build local), que traen
+#  rutas de NuGet absolutas de esta máquina (por ejemplo, la carpeta de paquetes
+#  compartida de Visual Studio). Esos ficheros pisan el obj/ que la propia etapa
+#  de restauración genera dentro del contenedor y rompen la publicación con un
+#  error de "fallback package folder" que no existe en Linux.
+# =============================================================================
+
+**/bin/
+**/obj/
+
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+
+**/*.user
+**/*.suo
+
+tests/
+
+# Secretos y entorno local: nunca deben acabar horneados en una imagen.
+.env
+.env.*
+appsettings.*.Local.json
+appsettings.Development.local.json
+
+# Documentación y artefactos que no hacen falta para compilar.
+README.md
+LICENSE
+*.svg
+scripts/
+despliegue/
