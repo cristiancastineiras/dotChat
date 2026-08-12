@@ -104,10 +104,6 @@ Y si algo se rompe, no hace falta adivinar: cada petición deja traza y cada log
   <em>Seq, con todos los registros buscables y correlacionados con su traza.</em>
 </p>
 
-## Lo que es esto hoy
-
-Si quieres los detalles finos —todos los comandos, la configuración, cada endpoint, cómo funciona el cifrado por dentro— tira del código o escribeme twin 🥀
-
 ---
 
 ## Licencia
