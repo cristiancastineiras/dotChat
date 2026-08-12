@@ -112,6 +112,15 @@
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="NSubstitute" Version="6.1.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.10" />
+    <!--
+      Las pruebas de los repositorios corren sobre SQLite en memoria y no sobre el
+      proveedor «InMemory»: este último no es relacional y no sabe ejecutar las
+      eliminaciones en bloque (ExecuteDelete) ni respeta claves ajenas, que es
+      justamente parte de lo que hay que comprobar.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <!-- Host de pruebas para ejercitar los endpoints HTTP de punta a punta. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
   </ItemGroup>
 
 </Project>
