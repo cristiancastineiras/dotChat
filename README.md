@@ -82,6 +82,15 @@ Arquitectura en capas (dominio, aplicación, infraestructura, servidor), sin mar
   <em>El modelo de datos: usuarios, salas, mensajes y adjuntos, junto a las tablas de Identity.</em>
 </p>
 
+
+<p align="center">
+  <img src="imgs/diagram.png" alt="Esquema de la arquitectura" width="700">
+  <br>
+  <em>La arquitectura general del sistema: cómo se conectan los distintos componentes.</em>
+  <a href="https://gitdiagram.com/cristiancastineiras/dotChat" target="_blank">Ver en tamaño completo</a>
+</p>
+
+
 Las imágenes y archivos se guardan cifrados en su propio almacén, separados de los mensajes:
 
 <p align="center">
