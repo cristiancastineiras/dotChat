@@ -22,7 +22,27 @@ public static class Proyecciones
         usuario.FechaCreacion,
         usuario.FechaUltimoAcceso,
         usuario.Activo,
-        enLinea);
+        enLinea,
+        usuario.TieneAvatar,
+        usuario.AvatarActualizado);
+
+    /// <summary>Proyecta un usuario a la vista que tiene de sí mismo.</summary>
+    /// <param name="usuario">Entidad de origen.</param>
+    /// <param name="esAdministrador">Rol resuelto desde el almacén de identidad.</param>
+    public static PerfilDto APerfil(this Usuario usuario, bool esAdministrador)
+    {
+        ArgumentNullException.ThrowIfNull(usuario);
+
+        return new PerfilDto(
+            usuario.Id,
+            usuario.UserName ?? string.Empty,
+            usuario.Email ?? string.Empty,
+            usuario.FechaCreacion,
+            usuario.FechaUltimoAcceso,
+            esAdministrador,
+            usuario.TieneAvatar,
+            usuario.AvatarActualizado);
+    }
 
     /// <summary>Proyecta una sala a su representación pública.</summary>
     /// <param name="sala">Entidad de origen.</param>

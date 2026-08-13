@@ -1,0 +1,4 @@
+# Versión mínima de Node.js requerida para este proyecto
+# Vite 8 y tsdown requieren Node 22.18+; Rolldown recomienda 24+
+# Usa nvm (Node Version Manager) para cambiar entre versiones fácilmente
+24

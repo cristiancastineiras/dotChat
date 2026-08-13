@@ -1,0 +1,232 @@
+/* ==========================================================================
+   HOJA DE ESTILOS RAÍZ DE dotChat
+   ==========================================================================
+   Orden de carga deliberado:
+
+   1. El reinicio de antd, no el de Tailwind. Los dos hacen lo mismo, pero solo
+      puede haber uno: antd 6 envuelve sus estilos en `:where()` para que sean
+      fáciles de sobrescribir, lo que los deja con especificidad cero. El
+      «preflight» de Tailwind declara `button { background-color: transparent }`
+      con un selector normal y, al ganar por especificidad, dejaría todos los
+      botones de antd sin fondo. Se toma el reinicio de antd y se importa
+      Tailwind sin el suyo.
+
+   2. El motor de Tailwind, en dos piezas (`theme` y `utilities`) en lugar del
+      paquete completo, que es lo que arrastraría el preflight.
+
+   3. Los componentes y utilidades propios.
+   ========================================================================== */
+
+@import "antd/dist/reset.css";
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
+
+/* Clases de Tailwind usadas dentro de los paquetes compartidos del monorepo:
+   sin esto, el escáner solo miraría la carpeta de la app y las purgaría. */
+@source "../../../paquetes";
+
+/* ==========================================================================
+   TIPOGRAFÍA
+   ==========================================================================
+   Uncut Sans en su corte variable: un solo fichero cubre todos los pesos, así
+   que se evitan siete peticiones y los saltos de tipografía al cargar. */
+
+@font-face {
+	font-family: "Uncut Sans";
+	src: url("./font/uncut/Uncut-Sans-VF.ttf") format("truetype-variations");
+	font-weight: 300 800;
+	font-style: normal;
+	font-display: swap;
+}
+
+/* ==========================================================================
+   TOKENS DE DISEÑO
+   ==========================================================================
+   El acento sale del propio logotipo de dotChat (#9370DB). El tono original es
+   demasiado claro para texto sobre blanco —no llega al contraste mínimo—, así
+   que se usa para adornos y se reservan los tonos 600/700 para todo lo que
+   haya que leer o pulsar.
+
+   El resto de la paleta es gris pizarra: en una interfaz que es casi toda
+   texto ajeno, el color tiene que venir del contenido, no del cromo. */
+
+@theme {
+	--font-sans:
+		"Uncut Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+		Arial, sans-serif;
+	--font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "JetBrains Mono", Menlo, monospace;
+
+	/* Acento de marca */
+	--color-marca-50: #f6f3fc;
+	--color-marca-100: #ece5f9;
+	--color-marca-200: #dacef3;
+	--color-marca-300: #c1aeea;
+	--color-marca-400: #9370db;
+	--color-marca-500: #7e56c9;
+	--color-marca-600: #6b45b0;
+	--color-marca-700: #593a91;
+	--color-marca-800: #4a3178;
+	--color-marca-900: #3e2a62;
+
+	/* Superficies y trazos. Se nombran por su papel y no por su tono, para que
+	   un cambio de paleta no obligue a repasar cada componente. */
+	--color-lienzo: #f6f7f9;
+	--color-panel: #ffffff;
+	--color-panel-suave: #fbfbfc;
+	--color-borde: #e4e7ec;
+	--color-borde-fuerte: #d3d8e0;
+
+	/* Texto */
+	--color-tinta: #10151f;
+	--color-tinta-suave: #4a5464;
+	--color-tinta-tenue: #7b8595;
+
+	/* Estados */
+	--color-exito: #15803d;
+	--color-aviso: #b45309;
+	--color-error: #b91c1c;
+	--color-conectado: #16a34a;
+
+	/* Altura de la barra superior; la usan la cabecera y los paneles que se
+	   alinean con ella. */
+	--spacing-cabecera: 3.5rem;
+}
+
+/* ==========================================================================
+   BASE DEL DOCUMENTO
+   ========================================================================== */
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+body {
+	margin: 0;
+	background-color: var(--color-lienzo);
+	color: var(--color-tinta);
+	font-family: var(--font-sans);
+	font-synthesis-weight: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+
+	/* La conversación tiene su propio desplazamiento: el documento nunca se
+	   mueve por detrás, que es lo que provoca el «rebote» al llegar al final. */
+	overflow: hidden;
+	overscroll-behavior: none;
+}
+
+/* El foco se marca siempre, pero solo cuando llega por teclado: quitarlo del
+   todo deja la aplicación inservible para quien no usa ratón. */
+:focus-visible {
+	outline: 2px solid var(--color-marca-600);
+	outline-offset: 2px;
+}
+
+::selection {
+	background-color: var(--color-marca-200);
+	color: var(--color-marca-900);
+}
+
+/* ==========================================================================
+   BARRAS DE DESPLAZAMIENTO
+   ==========================================================================
+   Discretas y sin ocupar sitio: la lista de conversaciones y el historial son
+   dos columnas estrechas y una barra ancha se come el margen del texto. */
+
+@supports (scrollbar-width: thin) {
+	.desplazable {
+		scrollbar-width: thin;
+		scrollbar-color: var(--color-borde-fuerte) transparent;
+	}
+}
+
+.desplazable::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+.desplazable::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.desplazable::-webkit-scrollbar-thumb {
+	background-color: var(--color-borde-fuerte);
+	border: 3px solid transparent;
+	border-radius: 9999px;
+	background-clip: content-box;
+}
+
+.desplazable::-webkit-scrollbar-thumb:hover {
+	background-color: var(--color-tinta-tenue);
+}
+
+/* ==========================================================================
+   UTILIDADES PROPIAS
+   ========================================================================== */
+
+/* Corta un texto a un número fijo de líneas. Se usa en la previsualización del
+   último mensaje de cada conversación. */
+@utility lineas-* {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: --value(integer);
+	overflow: hidden;
+}
+
+/* Rejilla de la ventana de chat: cabecera fija, historial elástico y redactor
+   abajo. Se declara aquí porque la reparten tres componentes distintos. */
+@utility rejilla-conversacion {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	height: 100%;
+}
+
+/* Los tres puntos del aviso de «está escribiendo». */
+@keyframes latido-punto {
+	0%,
+	80%,
+	100% {
+		opacity: 0.25;
+		transform: translateY(0);
+	}
+	40% {
+		opacity: 1;
+		transform: translateY(-2px);
+	}
+}
+
+.punto-escribiendo {
+	animation: latido-punto 1.2s infinite ease-in-out;
+}
+
+/* Entrada suave de los mensajes nuevos. Es un desplazamiento mínimo: en una
+   lista que crece sola, una animación larga marea más que ayuda. */
+@keyframes entrada-mensaje {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.entrada-mensaje {
+	animation: entrada-mensaje 0.18s ease-out;
+}
+
+/* Quien haya pedido menos movimiento en su sistema no debe ver ninguno. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

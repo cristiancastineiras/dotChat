@@ -1,0 +1,35 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"globalEnv": ["NODE_ENV", "CI"],
+	"globalDependencies": ["pnpm-lock.yaml", "turbo.json", ".oxlintrc.json", ".oxfmtrc.json"],
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"inputs": ["$TURBO_DEFAULT$", ".env*", "entorno/.env*"],
+			"outputs": ["dist/**", ".next/**"],
+			"env": ["VITE_*"]
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true,
+			"dependsOn": ["^build"]
+		},
+		"preview": {
+			"cache": false,
+			"persistent": true,
+			"dependsOn": ["build"]
+		},
+		"lint": {
+			"inputs": ["$TURBO_DEFAULT$", "../../.oxlintrc.json", "../../.oxfmtrc.json"],
+			"outputs": []
+		},
+		"typecheck": {
+			"inputs": ["$TURBO_DEFAULT$", "tsconfig.json", "../../paquetes/configuracion-ts/**"],
+			"outputs": []
+		},
+		"clean": {
+			"cache": false,
+			"outputs": []
+		}
+	}
+}

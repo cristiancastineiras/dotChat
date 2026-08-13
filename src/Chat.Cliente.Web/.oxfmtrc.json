@@ -1,0 +1,56 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"tabWidth": 2,
+	"printWidth": 100,
+	"endOfLine": "lf",
+	"insertFinalNewline": true,
+	"semi": false,
+	"singleQuote": false,
+	"trailingComma": "all",
+	"arrowParens": "always",
+	"sortImports": {
+		"groups": [
+			"side_effect_style",
+			"side_effect",
+			"builtin",
+			"external",
+			"internal",
+			["parent", "sibling", "index"],
+			"style",
+			"type",
+			"unknown"
+		],
+		"order": "asc",
+		"ignoreCase": true,
+		"newlinesBetween": true
+	},
+	"sortTailwindcss": {
+		"attributes": ["class", "className"],
+		"functions": ["clsx", "cn", "twMerge"]
+	},
+	"ignorePatterns": [
+		"**/node_modules/**",
+		"**/dist/**",
+		"**/.turbo/**",
+		"**/coverage/**",
+		"**/*.min.js",
+		"**/pnpm-lock.yaml",
+		"**/.pnpm-store/**",
+		"**/*.tsbuildinfo"
+	],
+	"overrides": [
+		{
+			"files": ["*.json", "*.jsonc"],
+			"options": {
+				"trailingComma": "none"
+			}
+		},
+		{
+			"files": ["*.md", "*.mdx", "*.html"],
+			"options": {
+				"printWidth": 120
+			}
+		}
+	]
+}

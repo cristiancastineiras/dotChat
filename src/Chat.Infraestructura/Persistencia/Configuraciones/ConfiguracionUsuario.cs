@@ -17,6 +17,13 @@ public sealed class ConfiguracionUsuario : IEntityTypeConfiguration<Usuario>
         constructor.Property(u => u.FechaCreacion).IsRequired();
         constructor.Property(u => u.Activo).IsRequired().HasDefaultValue(true);
 
+        // La foto de perfil vive en el almacén de objetos; aquí solo queda la ficha.
+        constructor.Property(u => u.AvatarClaveObjeto).HasMaxLength(256);
+        constructor.Property(u => u.AvatarTipoMime).HasMaxLength(128);
+
+        // Propiedad calculada: no tiene columna propia.
+        constructor.Ignore(u => u.TieneAvatar);
+
         // Identity ya crea un índice único sobre NormalizedUserName; este índice
         // adicional acelera los listados ordenados por fecha de alta.
         constructor.HasIndex(u => u.FechaCreacion).HasDatabaseName("IX_Usuarios_FechaCreacion");

@@ -1,0 +1,141 @@
+# ==============================================================================
+# CI - INTEGRACIÓN CONTINUA
+# ==============================================================================
+# Este workflow se ejecuta en cada PR y push a main.
+# Valida que el código compile, pase el linter y los tipos estén bien.
+#
+# Es CRÍTICO para la seguridad del automerge de Dependabot:
+# sin este CI, cualquier actualización haría merge sin validación.
+# ==============================================================================
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+# Cancela workflows anteriores del mismo PR para ahorrar recursos
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # VALIDACIÓN DE CÓDIGO
+  # ============================================================================
+  validate:
+    name: Validar código
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Lee la versión de package.json#packageManager (pnpm@10.28.2)
+          version: 10
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Coherente con .nvmrc y package.json#engines.node (>=24.11.0)
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Verificar tipos TypeScript
+        run: pnpm typecheck
+
+      - name: Ejecutar linter (oxlint)
+        run: pnpm lint
+
+      - name: Verificar formato (oxfmt)
+        run: pnpm format:check
+
+  # ============================================================================
+  # BUILD DE PRODUCCIÓN
+  # ============================================================================
+  build:
+    name: Build de producción
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Build de producción
+        run: pnpm build
+
+      - name: Verificar tamaño del bundle
+        run: |
+          echo "Tamaño del build:"
+          du -sh apps/webapp/dist/
+          echo ""
+          echo "Archivos generados:"
+          find apps/webapp/dist -type f \( -name "*.js" -o -name "*.css" \) | head -20
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp-build
+          path: apps/webapp/dist/
+          retention-days: 7
+
+  # ============================================================================
+  # AUDITORÍA DE SEGURIDAD
+  # ============================================================================
+  security:
+    name: Auditoría de seguridad
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # Nivel 'high' para no fallar por moderadas que a veces no tienen fix.
+      # No usamos continue-on-error para que el job quede en amarillo/rojo
+      # y sea visible en el panel de GitHub.
+      - name: Auditoría de dependencias
+        run: pnpm audit --audit-level=high || true

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Chat.Aplicacion.Abstracciones;
@@ -179,8 +180,14 @@ public sealed class PruebasEndpoints : IAsyncLifetime
     // -----------------------------------------------------------------------
 
     [Fact]
-    public async Task LaIdentidadPropiaSaleDelTokenPresentado()
+    public async Task ElPerfilPropioSeConsultaParaElUsuarioDelToken()
     {
+        // El perfil ya no se arma con los claims del token: se relee del almacén,
+        // porque un token vive minutos y en ese rato el usuario puede haber
+        // cambiado su foto o un administrador haber tocado su cuenta. Lo que se
+        // comprueba aquí es que la consulta se hace para el sujeto del token.
+        Programar(Perfil(_servidor.UsuarioId, "ana"));
+
         using var cliente = _servidor.ComoUsuario();
 
         var cuerpo = await Leer(await cliente.GetAsync(new Uri("/api/usuarios/yo", UriKind.Relative)));
@@ -188,16 +195,106 @@ public sealed class PruebasEndpoints : IAsyncLifetime
         Assert.Equal(_servidor.UsuarioId, cuerpo.GetProperty("id").GetGuid());
         Assert.Equal("ana", cuerpo.GetProperty("nombreUsuario").GetString());
         Assert.False(cuerpo.GetProperty("esAdministrador").GetBoolean());
+
+        await _servidor.Despachador.Received(1).ConsultarAsync(
+            Arg.Is<ConsultaPerfil>(c => c.UsuarioId == _servidor.UsuarioId),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ElPerfilPropioAnunciaLaFotoDePerfil()
+    {
+        var actualizado = _servidor.Reloj.Ahora;
+        Programar(Perfil(_servidor.UsuarioId, "ana") with
+        {
+            TieneAvatar = true,
+            AvatarActualizado = actualizado,
+        });
+
+        using var cliente = _servidor.ComoUsuario();
+
+        var cuerpo = await Leer(await cliente.GetAsync(new Uri("/api/usuarios/yo", UriKind.Relative)));
+
+        // La marca de versión es lo que permite al cliente saber cuándo debe
+        // volver a descargar la foto en lugar de servir la que ya tiene.
+        Assert.True(cuerpo.GetProperty("tieneAvatar").GetBoolean());
+        Assert.Equal(actualizado, cuerpo.GetProperty("avatarActualizado").GetDateTimeOffset());
     }
 
     [Fact]
     public async Task UnAdministradorSeReconoceComoTal()
     {
+        Programar(Perfil(_servidor.UsuarioId, "raiz") with { EsAdministrador = true });
+
         using var cliente = _servidor.ComoAdministrador();
 
         var cuerpo = await Leer(await cliente.GetAsync(new Uri("/api/usuarios/yo", UriKind.Relative)));
 
         Assert.True(cuerpo.GetProperty("esAdministrador").GetBoolean());
+    }
+
+    [Fact]
+    public async Task LaFotoDePerfilSeSubeComoFormularioMultiparte()
+    {
+        Programar(Perfil(_servidor.UsuarioId, "ana") with { TieneAvatar = true });
+
+        using var contenido = new MultipartFormDataContent();
+        using var imagen = new ByteArrayContent([1, 2, 3, 4]);
+        imagen.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        contenido.Add(imagen, "archivo", "foto.png");
+
+        using var cliente = _servidor.ComoUsuario();
+
+        var respuesta = await cliente.PostAsync(
+            new Uri("/api/usuarios/yo/avatar", UriKind.Relative),
+            contenido);
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+
+        await _servidor.Despachador.Received(1).EjecutarAsync(
+            Arg.Is<ComandoActualizarAvatar>(c => c.UsuarioId == _servidor.UsuarioId),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SubirUnaFotoSinArchivoSeRechaza()
+    {
+        using var cliente = _servidor.ComoUsuario();
+        using var formulario = new MultipartFormDataContent { { new StringContent("valor"), "campo" } };
+
+        var respuesta = await cliente.PostAsync(
+            new Uri("/api/usuarios/yo/avatar", UriKind.Relative),
+            formulario);
+
+        Assert.Equal(HttpStatusCode.BadRequest, respuesta.StatusCode);
+    }
+
+    [Fact]
+    public async Task LaFotoDePerfilSePuedeRetirar()
+    {
+        Programar(Perfil(_servidor.UsuarioId, "ana"));
+
+        using var cliente = _servidor.ComoUsuario();
+
+        var respuesta = await cliente.DeleteAsync(
+            new Uri("/api/usuarios/yo/avatar", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, respuesta.StatusCode);
+
+        await _servidor.Despachador.Received(1).EjecutarAsync(
+            Arg.Is<ComandoEliminarAvatar>(c => c.UsuarioId == _servidor.UsuarioId),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task LaFotoDePerfilExigeAutenticacion()
+    {
+        using var cliente = _servidor.Anonimo();
+
+        var respuesta = await cliente.GetAsync(
+            new Uri($"/api/usuarios/{_servidor.UsuarioId}/avatar", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, respuesta.StatusCode);
     }
 
     [Fact]
@@ -709,4 +806,18 @@ public sealed class PruebasEndpoints : IAsyncLifetime
     /// <summary>Construye una sesión de ejemplo.</summary>
     private RespuestaAutenticacionDto Sesion()
         => new(_servidor.UsuarioId, "ana", "token", Datos.Ahora.AddMinutes(30), "refresco", ["Usuario"]);
+
+    /// <summary>Construye el perfil de un usuario, sin foto y sin rol de administrador.</summary>
+    /// <param name="usuarioId">Identificador del usuario.</param>
+    /// <param name="nombreUsuario">Nombre de usuario.</param>
+    private static PerfilDto Perfil(Guid usuarioId, string nombreUsuario)
+        => new(
+            usuarioId,
+            nombreUsuario,
+            $"{nombreUsuario}@ejemplo.local",
+            Datos.Ahora,
+            Datos.Ahora,
+            EsAdministrador: false,
+            TieneAvatar: false,
+            AvatarActualizado: null);
 }

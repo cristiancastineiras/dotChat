@@ -278,6 +278,17 @@ namespace Chat.Infraestructura.Migraciones
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
+                    b.Property<DateTimeOffset?>("AvatarActualizado")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AvatarClaveObjeto")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("AvatarTipoMime")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");

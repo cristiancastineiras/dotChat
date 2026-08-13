@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+	<head>
+		<!-- La codificación va primero, antes de cualquier texto. -->
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+		<!-- === SEGURIDAD === -->
+		<meta http-equiv="X-Content-Type-Options" content="nosniff" />
+		<meta name="referrer" content="strict-origin-when-cross-origin" />
+
+		<!-- === IDENTIDAD === -->
+		<title>dotChat</title>
+		<meta name="description" content="Mensajería en tiempo real, cifrada y totalmente local." />
+		<meta name="color-scheme" content="light" />
+		<meta name="theme-color" content="#f8fafc" />
+
+		<!-- El icono del proyecto vive en la raíz del repositorio y se copia al build. -->
+		<link rel="icon" type="image/svg+xml" href="public/dotChat_.svg" />
+	</head>
+
+	<body>
+		<!--
+      Contenedor raíz de React. La aplicación ocupa siempre el alto de la ventana:
+      la conversación tiene su propio desplazamiento y el documento no debe moverse
+      detrás de ella.
+    -->
+		<div id="root"></div>
+
+		<noscript>
+			<div style="padding: 2rem; text-align: center; font-family: system-ui">
+				<h1>Hace falta JavaScript</h1>
+				<p>
+					dotChat necesita JavaScript para mantener la conversación en tiempo real. Actívalo en tu navegador para
+					continuar.
+				</p>
+			</div>
+		</noscript>
+
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
+</html>

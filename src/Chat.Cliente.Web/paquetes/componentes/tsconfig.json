@@ -1,0 +1,12 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"extends": "../../paquetes/configuracion-ts/navegador.json",
+	"include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "tsdown.config.ts"],
+	"compilerOptions": {
+		"outDir": "dist",
+		"paths": {
+			"@paquetes/*": ["../../paquetes/*/src"]
+		}
+	},
+	"exclude": ["node_modules", "dist", ".turbo"]
+}

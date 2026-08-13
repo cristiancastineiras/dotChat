@@ -58,12 +58,18 @@ public static class ExtensionesInyeccionDependencias
         servicios.AddScoped<IManejadorComando<ComandoEnviarMensaje, MensajeDto>, ManejadorEnviarMensaje>();
         servicios.AddScoped<IManejadorComando<ComandoSubirAdjunto, AdjuntoDto>, ManejadorSubirAdjunto>();
         servicios.AddScoped<IManejadorComando<ComandoEliminarUsuario, ResultadoOperacionDto>, ManejadorEliminarUsuario>();
+        servicios.AddScoped<IManejadorComando<ComandoActualizarAvatar, PerfilDto>, ManejadorActualizarAvatar>();
+        servicios.AddScoped<IManejadorComando<ComandoEliminarAvatar, PerfilDto>, ManejadorEliminarAvatar>();
         servicios.AddScoped<IManejadorComando<ComandoLimpiarCache, ResultadoOperacionDto>, ManejadorLimpiarCache>();
 
         // Consultas.
         servicios.AddScoped<
             IManejadorConsulta<ConsultaListarUsuarios, IReadOnlyList<UsuarioDto>>,
             ManejadorListarUsuarios>();
+        servicios.AddScoped<IManejadorConsulta<ConsultaPerfil, PerfilDto>, ManejadorPerfil>();
+        servicios.AddScoped<
+            IManejadorConsulta<ConsultaDescargarAvatar, ContenidoAdjuntoDto>,
+            ManejadorDescargarAvatar>();
         servicios.AddScoped<
             IManejadorConsulta<ConsultaListarSalas, IReadOnlyList<SalaDto>>,
             ManejadorListarSalas>();
