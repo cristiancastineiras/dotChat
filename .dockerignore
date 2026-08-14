@@ -35,3 +35,11 @@ LICENSE
 *.svg
 scripts/
 despliegue/
+
+# Cliente web: lo que se instala o se genera en el host no debe viajar al
+# contexto de construcción. La imagen del cliente web instala y compila todo
+# de nuevo dentro del contenedor (ver src/Chat.Cliente.Web/Dockerfile).
+**/node_modules/
+**/dist/
+**/.turbo/
+**/.vite/

@@ -90,6 +90,12 @@
 	/* Altura de la barra superior; la usan la cabecera y los paneles que se
 	   alinean con ella. */
 	--spacing-cabecera: 3.5rem;
+
+	/* Sombras discretas para separar cabeceras y burbujas del fondo sin recurrir
+	   a un borde duro en todas partes; es lo que da el acabado «elevado» de
+	   WhatsApp/Telegram en vez del aspecto plano de un formulario. */
+	--shadow-cabecera: 0 1px 0 0 var(--color-borde), 0 1px 3px 0 rgb(16 21 31 / 0.04);
+	--shadow-burbuja: 0 1px 1px 0 rgb(16 21 31 / 0.04), 0 1px 2px 0 rgb(16 21 31 / 0.03);
 }
 
 /* ==========================================================================

@@ -17,6 +17,7 @@ import {
 	Image as IconoImagen,
 	LogOut,
 	MessageSquarePlus,
+	Mic,
 	Plus,
 	Search,
 	Settings,
@@ -60,7 +61,7 @@ export function ListaConversaciones({ salaActivaId, alAbrirSala, nombrePropio }:
 	return (
 		<>
 			{/* Cabecera con la cuenta */}
-			<header className="h-cabecera border-borde flex shrink-0 items-center gap-2 border-b px-3">
+			<header className="h-cabecera shadow-cabecera bg-panel relative z-10 flex shrink-0 items-center gap-2 px-4">
 				<Avatar
 					usuarioId={sesion?.usuarioId ?? null}
 					nombre={nombrePropio}
@@ -105,14 +106,14 @@ export function ListaConversaciones({ salaActivaId, alAbrirSala, nombrePropio }:
 			</header>
 
 			{/* Buscador y acciones */}
-			<div className="border-borde flex shrink-0 items-center gap-2 border-b px-3 py-2">
+			<div className="bg-panel flex shrink-0 items-center gap-2 px-3 py-2.5">
 				<Input
 					value={busqueda}
 					onChange={(evento) => setBusqueda(evento.target.value)}
 					placeholder="Buscar conversación"
 					prefix={<Search className="text-tinta-tenue h-3.5 w-3.5" />}
 					allowClear
-					size="small"
+					className="!bg-lienzo !rounded-full !border-transparent"
 				/>
 
 				<Dropdown
@@ -217,13 +218,20 @@ const FilaConversacion = memo(function FilaConversacion({
 	const enLinea = sala.esDirecta ? (sala.interlocutorEnLinea ?? false) : undefined
 
 	return (
-		<li>
+		<li className="relative">
+			{activa && (
+				<span
+					className="bg-marca-600 absolute top-1/2 left-0 h-8 w-[3px] -translate-y-1/2 rounded-full"
+					aria-hidden
+				/>
+			)}
+
 			<button
 				type="button"
 				onClick={() => alPulsar(sala.id)}
 				aria-current={activa ? "page" : undefined}
 				className={cn(
-					"flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors",
+					"flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors",
 					activa ? "bg-marca-50" : "hover:bg-lienzo",
 				)}
 			>
@@ -292,13 +300,14 @@ function Previsualizacion({ sala }: { sala: Sala }) {
 
 	if (ultimo.nombreAdjunto && !ultimo.texto) {
 		const EsImagen = ultimo.tipoAdjunto === TipoAdjunto.Imagen
-		const Icono = EsImagen ? IconoImagen : FileText
+		const EsAudio = ultimo.tipoAdjunto === TipoAdjunto.Audio
+		const Icono = EsImagen ? IconoImagen : EsAudio ? Mic : FileText
 
 		return (
 			<span className="flex items-center gap-1">
 				{prefijo}
 				<Icono className="h-3 w-3 shrink-0" aria-hidden />
-				{EsImagen ? "Imagen" : recortar(ultimo.nombreAdjunto, 24)}
+				{EsImagen ? "Imagen" : EsAudio ? "Nota de voz" : recortar(ultimo.nombreAdjunto, 24)}
 			</span>
 		)
 	}

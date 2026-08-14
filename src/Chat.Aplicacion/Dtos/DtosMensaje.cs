@@ -14,6 +14,7 @@ namespace Chat.Aplicacion.Dtos;
 /// <param name="TamanoBytes">Tamaño del contenido en claro, en bytes.</param>
 /// <param name="Ancho">Anchura en píxeles; solo en las imágenes.</param>
 /// <param name="Alto">Altura en píxeles; solo en las imágenes.</param>
+/// <param name="DuracionMs">Duración en milisegundos; solo en el audio, y sólo si se declaró al subirlo.</param>
 public sealed record AdjuntoDto(
     Guid Id,
     string NombreArchivo,
@@ -21,10 +22,14 @@ public sealed record AdjuntoDto(
     TipoAdjunto Tipo,
     long TamanoBytes,
     int? Ancho = null,
-    int? Alto = null)
+    int? Alto = null,
+    int? DuracionMs = null)
 {
     /// <summary>Indica si el cliente puede dibujar el contenido en la consola.</summary>
     public bool EsImagen => Tipo == TipoAdjunto.Imagen;
+
+    /// <summary>Indica si el cliente puede reproducir el contenido como audio.</summary>
+    public bool EsAudio => Tipo == TipoAdjunto.Audio;
 }
 
 /// <summary>

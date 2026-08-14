@@ -20,6 +20,7 @@ public sealed class PruebasSubirAdjunto : IDisposable
     private readonly IRepositorioAdjuntos _adjuntos = Substitute.For<IRepositorioAdjuntos>();
     private readonly IRepositorioSalas _salas = Substitute.For<IRepositorioSalas>();
     private readonly IProcesadorImagenes _procesador = Substitute.For<IProcesadorImagenes>();
+    private readonly IProcesadorAudio _procesadorAudio = Substitute.For<IProcesadorAudio>();
     private readonly IUnidadDeTrabajo _unidadDeTrabajo = Substitute.For<IUnidadDeTrabajo>();
     private readonly AlmacenObjetosDePrueba _almacen = new();
     private readonly Chat.Infraestructura.Seguridad.ServicioCifradorMensajes _cifrador =
@@ -34,6 +35,7 @@ public sealed class PruebasSubirAdjunto : IDisposable
         _salas.ObtenerPorIdAsync(_sala.Id, Arg.Any<CancellationToken>()).Returns(_sala);
         _salas.EsMiembroAsync(_sala.Id, _usuarioId, Arg.Any<CancellationToken>()).Returns(true);
         _procesador.EsImagenAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(false);
+        _procesadorAudio.EsAudioAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(false);
     }
 
     /// <inheritdoc />
@@ -43,6 +45,7 @@ public sealed class PruebasSubirAdjunto : IDisposable
         _adjuntos,
         _salas,
         _procesador,
+        _procesadorAudio,
         _cifrador,
         _almacen,
         _unidadDeTrabajo,
@@ -50,8 +53,8 @@ public sealed class PruebasSubirAdjunto : IDisposable
         Opciones.De(Opciones.Adjuntos(activados, tamanoMaximo)),
         NullLogger<ManejadorSubirAdjunto>.Instance);
 
-    private ComandoSubirAdjunto Comando(byte[] contenido, string nombre = "notas.txt")
-        => new(_usuarioId, _sala.Id, nombre, new MemoryStream(contenido, writable: false), contenido.Length);
+    private ComandoSubirAdjunto Comando(byte[] contenido, string nombre = "notas.txt", long? duracionMs = null)
+        => new(_usuarioId, _sala.Id, nombre, new MemoryStream(contenido, writable: false), contenido.Length, duracionMs);
 
     [Fact]
     public async Task UnArchivoSeCifraAntesDeLlegarAlAlmacenYSeRegistraSuFicha()
@@ -123,6 +126,50 @@ public sealed class PruebasSubirAdjunto : IDisposable
         Assert.Equal(600, dto.Alto);
         Assert.Equal(5, dto.TamanoBytes);
         Assert.True(dto.EsImagen);
+    }
+
+    [Fact]
+    public async Task UnAudioReconocidoSeEtiquetaConSuDuracionDeclarada()
+    {
+        _procesadorAudio.EsAudioAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        var dto = await Manejador().ManejarAsync(Comando([9, 9, 9], nombre: "nota.weba", duracionMs: 4200));
+
+        Assert.Equal(TipoAdjunto.Audio, dto.Tipo);
+        Assert.True(dto.EsAudio);
+        Assert.Equal(4200, dto.DuracionMs);
+
+        // El audio no se recodifica —a diferencia de la imagen—, así que se guarda
+        // igual que un archivo cualquiera: no se le conocen dimensiones.
+        Assert.Null(dto.Ancho);
+        Assert.Null(dto.Alto);
+    }
+
+    [Fact]
+    public async Task UnaDuracionAbsurdaSeDescartaYQuedaSinConocer()
+    {
+        _procesadorAudio.EsAudioAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        var negativa = await Manejador().ManejarAsync(Comando([1], nombre: "a.weba", duracionMs: -5));
+        var desmedida = await Manejador().ManejarAsync(Comando([1], nombre: "b.weba", duracionMs: 999_999_999));
+
+        Assert.Null(negativa.DuracionMs);
+        Assert.Null(desmedida.DuracionMs);
+    }
+
+    [Fact]
+    public async Task LoQueNoEsImagenNiAudioSeGuardaComoArchivoGenerico()
+    {
+        // Es el caso por defecto de los dobles de prueba (`EsImagenAsync`/`EsAudioAsync`
+        // devuelven falso), pero se deja explícito porque es la puerta de salida de la
+        // clasificación: si algún día alguna de las dos empieza a decir «sí» por error,
+        // esta prueba deja de pasar.
+        var dto = await Manejador().ManejarAsync(Comando([1, 2, 3], nombre: "documento.pdf"));
+
+        Assert.Equal(TipoAdjunto.Archivo, dto.Tipo);
+        Assert.False(dto.EsImagen);
+        Assert.False(dto.EsAudio);
+        Assert.Null(dto.DuracionMs);
     }
 
     [Fact]
@@ -219,6 +266,7 @@ public sealed class PruebasSubirAdjunto : IDisposable
             _adjuntos,
             _salas,
             _procesador,
+            _procesadorAudio,
             _cifrador,
             almacenRoto,
             _unidadDeTrabajo,

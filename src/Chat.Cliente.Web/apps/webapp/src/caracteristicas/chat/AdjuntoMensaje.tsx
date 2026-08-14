@@ -7,10 +7,10 @@
 // ============================================================================
 
 import { descargarBlob, mensajeDeError } from "@paquetes/api"
-import { cn, extensionDe, formatearTamano, guardarComoArchivo } from "@paquetes/utiles"
+import { cn, extensionDe, formatearDuracion, formatearTamano, guardarComoArchivo } from "@paquetes/utiles"
 import { Button, Image, Spin } from "antd"
-import { Download, FileText } from "lucide-react"
-import { useEffect, useState } from "react"
+import { Download, FileText, Pause, Play } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import type { Adjunto } from "@paquetes/modelos"
@@ -28,6 +28,17 @@ export function AdjuntoMensaje({ adjunto, vistaPreviaLocal, pendiente, esPropio 
 	if (adjunto.esImagen) {
 		return (
 			<ImagenAdjunta adjunto={adjunto} vistaPreviaLocal={vistaPreviaLocal} pendiente={pendiente} />
+		)
+	}
+
+	if (adjunto.esAudio) {
+		return (
+			<AudioAdjunto
+				adjunto={adjunto}
+				vistaPreviaLocal={vistaPreviaLocal}
+				pendiente={pendiente}
+				esPropio={esPropio}
+			/>
 		)
 	}
 
@@ -123,6 +134,236 @@ function ImagenAdjunta({
 			)}
 		</div>
 	)
+}
+
+// ---------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------
+
+/** Número de barras con las que se dibuja la onda del audio. */
+const NUMERO_BARRAS_ONDA = 40
+
+/**
+ * Claves estables de las barras de la onda, una por posición. Cada barra
+ * representa siempre el mismo tramo de tiempo del audio —la posición es su
+ * identidad—, así que no hace falta más que enumerarlas una vez.
+ */
+const IDS_BARRAS_ONDA = Array.from({ length: NUMERO_BARRAS_ONDA }, (_valor, indice) => `barra-${indice}`)
+
+function AudioAdjunto({
+	adjunto,
+	vistaPreviaLocal,
+	pendiente,
+	esPropio,
+}: {
+	adjunto: Adjunto
+	vistaPreviaLocal?: string | undefined
+	pendiente: boolean
+	esPropio: boolean
+}) {
+	const [url, setUrl] = useState<string | null>(vistaPreviaLocal ?? null)
+	const [fallo, setFallo] = useState(false)
+	const [picos, setPicos] = useState<number[] | null>(null)
+	const [reproduciendo, setReproduciendo] = useState(false)
+	const [posicionMs, setPosicionMs] = useState(0)
+	const [duracionMs, setDuracionMs] = useState(adjunto.duracionMs ?? 0)
+
+	const audioRef = useRef<HTMLAudioElement | null>(null)
+
+	useEffect(() => {
+		if (pendiente || !adjunto.id) return
+
+		let vigente = true
+		let objetoUrl: string | null = null
+
+		void (async () => {
+			try {
+				const contenido = await descargarBlob(`adjuntos/${adjunto.id}`)
+				if (!vigente) return
+
+				objetoUrl = URL.createObjectURL(contenido)
+				setUrl(objetoUrl)
+
+				// La onda se calcula una sola vez, decodificando el audio entero: es
+				// mucho más barato que analizarlo en tiempo real mientras suena, y no
+				// hace falta que sea exacta —solo que se parezca a algo—, así que se
+				// somete a un número fijo de muestras sin más precauciones.
+				void calcularPicos(contenido).then((valores) => {
+					if (vigente) setPicos(valores)
+				})
+			} catch {
+				if (vigente) setFallo(true)
+			}
+		})()
+
+		return () => {
+			vigente = false
+			if (objetoUrl) URL.revokeObjectURL(objetoUrl)
+		}
+	}, [adjunto.id, pendiente])
+
+	// La previsualización local también se puede analizar de inmediato, sin
+	// esperar a que el servidor confirme la subida.
+	useEffect(() => {
+		if (!vistaPreviaLocal) return
+
+		let vigente = true
+
+		fetch(vistaPreviaLocal)
+			.then((respuesta) => respuesta.blob())
+			.then(calcularPicos)
+			.then((valores) => {
+				if (vigente) setPicos(valores)
+			})
+			.catch(() => {
+				// Sin onda no pasa nada: se degrada a la barra de progreso simple.
+			})
+
+		return () => {
+			vigente = false
+		}
+	}, [vistaPreviaLocal])
+
+	function alternarReproduccion() {
+		const audio = audioRef.current
+		if (!audio) return
+
+		if (audio.paused) {
+			void audio.play()
+		} else {
+			audio.pause()
+		}
+	}
+
+	function buscar(fraccion: number) {
+		const audio = audioRef.current
+		if (!audio || !Number.isFinite(audio.duration)) return
+
+		audio.currentTime = fraccion * audio.duration
+	}
+
+	const fraccion = duracionMs > 0 ? Math.min(1, posicionMs / duracionMs) : 0
+	const colorBarra = esPropio ? "bg-white/35" : "bg-marca-200"
+	const colorBarraActiva = esPropio ? "bg-white" : "bg-marca-500"
+
+	if (fallo) {
+		return (
+			<div className={cn("flex items-center gap-2 px-3 py-2.5 text-xs", esPropio ? "text-white/80" : "text-tinta-tenue")}>
+				<FileText className="h-4 w-4" aria-hidden />
+				No se ha podido cargar el audio.
+			</div>
+		)
+	}
+
+	return (
+		<div className="flex items-center gap-2.5 px-2.5 py-2.5">
+			{url && (
+				// eslint-disable-next-line jsx-a11y/media-has-caption -- es una nota de voz, no lleva pistas de texto.
+				<audio
+					ref={audioRef}
+					src={url}
+					preload="metadata"
+					onPlay={() => setReproduciendo(true)}
+					onPause={() => setReproduciendo(false)}
+					onEnded={() => {
+						setReproduciendo(false)
+						setPosicionMs(0)
+					}}
+					onLoadedMetadata={(evento) => {
+						const real = evento.currentTarget.duration
+						if (Number.isFinite(real)) setDuracionMs(real * 1000)
+					}}
+					onTimeUpdate={(evento) => setPosicionMs(evento.currentTarget.currentTime * 1000)}
+					className="hidden"
+				/>
+			)}
+
+			<Button
+				type="text"
+				shape="circle"
+				disabled={!url || pendiente}
+				onClick={alternarReproduccion}
+				aria-label={reproduciendo ? "Pausar" : "Reproducir"}
+				className={esPropio ? "!text-white hover:!bg-white/15" : ""}
+			>
+				{!url ? (
+					<Spin size="small" />
+				) : reproduciendo ? (
+					<Pause className="h-4 w-4" />
+				) : (
+					<Play className="h-4 w-4" />
+				)}
+			</Button>
+
+			<button
+				type="button"
+				onClick={(evento) => {
+					const rectangulo = evento.currentTarget.getBoundingClientRect()
+					buscar((evento.clientX - rectangulo.left) / rectangulo.width)
+				}}
+				aria-label="Buscar en el audio"
+				disabled={!url}
+				className="flex h-8 flex-1 items-center gap-[3px] overflow-hidden disabled:cursor-default"
+			>
+				{(picos ?? Array.from({ length: NUMERO_BARRAS_ONDA }, () => 0.4))
+					.map((pico, indice) => (
+						<span
+							key={IDS_BARRAS_ONDA[indice]}
+							className={cn(
+								"w-[3px] shrink-0 rounded-full transition-colors",
+								indice / NUMERO_BARRAS_ONDA < fraccion ? colorBarraActiva : colorBarra,
+							)}
+							style={{ height: `${Math.max(15, Math.round(pico * 100))}%` }}
+						/>
+					))}
+			</button>
+
+			<span
+				className={cn("w-9 shrink-0 text-right text-[11px] tabular-nums", esPropio ? "text-white/80" : "text-tinta-tenue")}
+			>
+				{formatearDuracion(reproduciendo || posicionMs > 0 ? posicionMs : duracionMs)}
+			</span>
+		</div>
+	)
+}
+
+/**
+ * Reduce un audio a un puñado de picos normalizados entre 0 y 1, para dibujar
+ * su forma de onda. Se decodifica entero con la API de Audio Web —no hace
+ * falta reproducirlo para eso— y se resume por buckets de amplitud máxima.
+ *
+ * @param blob Contenido del audio.
+ */
+async function calcularPicos(blob: Blob): Promise<number[]> {
+	if (typeof AudioContext === "undefined") {
+		return Array.from({ length: NUMERO_BARRAS_ONDA }, () => 0.5)
+	}
+
+	const contexto = new AudioContext()
+
+	try {
+		const buffer = await contexto.decodeAudioData(await blob.arrayBuffer())
+		const canal = buffer.getChannelData(0)
+		const tamanoBucket = Math.max(1, Math.floor(canal.length / NUMERO_BARRAS_ONDA))
+
+		const picos = Array.from({ length: NUMERO_BARRAS_ONDA }, (_valor, indice) => {
+			const inicio = indice * tamanoBucket
+			let maximo = 0
+
+			for (let i = inicio; i < inicio + tamanoBucket && i < canal.length; i++) {
+				maximo = Math.max(maximo, Math.abs(canal[i] ?? 0))
+			}
+
+			return maximo
+		})
+
+		// Se normaliza contra el pico más alto: un audio grabado bajito no debería
+		// dibujarse como una línea plana.
+		const picoMaximo = Math.max(...picos, 0.01)
+		return picos.map((pico) => Math.max(0.08, pico / picoMaximo))
+	} finally {
+		void contexto.close()
+	}
 }
 
 // ---------------------------------------------------------------------------

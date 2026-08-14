@@ -119,7 +119,8 @@ public static class Proyecciones
             adjunto.Tipo,
             adjunto.TamanoBytes,
             adjunto.Ancho,
-            adjunto.Alto);
+            adjunto.Alto,
+            adjunto.DuracionMs);
     }
 
     /// <summary>

@@ -46,6 +46,8 @@ export const TipoAdjunto = {
 	Archivo: 0,
 	/** Imagen que el cliente puede dibujar. */
 	Imagen: 1,
+	/** Nota de voz u otro audio que el cliente puede reproducir. */
+	Audio: 2,
 } as const
 
 export type TipoAdjunto = (typeof TipoAdjunto)[keyof typeof TipoAdjunto]
@@ -172,8 +174,12 @@ export interface Adjunto {
 	readonly ancho: number | null
 	/** Altura en píxeles; solo en las imágenes. */
 	readonly alto: number | null
+	/** Duración en milisegundos; solo en el audio, y solo si se declaró al subirlo. */
+	readonly duracionMs: number | null
 	/** Calculado por el servidor a partir del tipo. */
 	readonly esImagen: boolean
+	/** Calculado por el servidor a partir del tipo. */
+	readonly esAudio: boolean
 }
 
 /** Mensaje ya descifrado, listo para mostrarse. */

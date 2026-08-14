@@ -318,6 +318,15 @@ export default defineConfig(({ mode }: ConfigEnv): UserConfig => {
 											name: "ui",
 											test: /[\\/]node_modules[\\/](lucide-react|clsx|sonner|dayjs)[\\/]/,
 										},
+										// Cajón de sastre: cualquier otra dependencia (p. ej. paquetes
+										// CJS de los que tira antd por debajo, como prop-types o
+										// react-is) que no calce con ninguno de los patrones de
+										// arriba. Sin este grupo, esos módulos caen en un chunk
+										// compartido que Rolldown genera automáticamente y que puede
+										// acabar fusionado con el "preload helper" interno de Vite,
+										// con un orden de ejecución entre chunks que revienta en
+										// tiempo de ejecución («x is not a function» al usar antd).
+										{ name: "vendor", test: /[\\/]node_modules[\\/]/ },
 									],
 								},
 							}

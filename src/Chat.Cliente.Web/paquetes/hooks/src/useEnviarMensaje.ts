@@ -24,6 +24,8 @@ export interface EnvioMensaje {
 	texto: string
 	/** Archivo a adjuntar, si lo hay. */
 	archivo?: File | null
+	/** Duración en milisegundos, si el archivo es una nota de voz grabada aquí mismo. */
+	duracionMs?: number
 }
 
 /** Resultado del hook. */
@@ -78,7 +80,7 @@ export function useEnviarMensaje(alFallar?: (mensaje: string) => void): UsoEnvio
 	)
 
 	const enviar = useCallback(
-		async ({ salaId, texto, archivo }: EnvioMensaje): Promise<boolean> => {
+		async ({ salaId, texto, archivo, duracionMs }: EnvioMensaje): Promise<boolean> => {
 			if (!sesion) return false
 
 			const limpio = texto.trim()
@@ -87,10 +89,12 @@ export function useEnviarMensaje(alFallar?: (mensaje: string) => void): UsoEnvio
 			const identificadorEnvio = crypto.randomUUID()
 			const almacen = useAlmacenChat.getState()
 
-			// Previsualización local de la imagen: sin ella, el mensaje se vería como
-			// un hueco gris hasta que terminase la subida.
+			// Previsualización local de la imagen o del audio: sin ella, el mensaje se
+			// vería como un hueco gris —o mudo— hasta que terminase la subida.
 			const vistaPrevia =
-				archivo && archivo.type.startsWith("image/") ? URL.createObjectURL(archivo) : null
+				archivo && (archivo.type.startsWith("image/") || archivo.type.startsWith("audio/"))
+					? URL.createObjectURL(archivo)
+					: null
 
 			const provisional: MensajeVista = {
 				id: identificadorEnvio,
@@ -100,7 +104,7 @@ export function useEnviarMensaje(alFallar?: (mensaje: string) => void): UsoEnvio
 				nombreUsuario: sesion.nombreUsuario,
 				texto: limpio,
 				fechaEnvio: new Date().toISOString(),
-				adjunto: archivo ? adjuntoProvisional(archivo) : null,
+				adjunto: archivo ? adjuntoProvisional(archivo, duracionMs) : null,
 				identificadorEnvio,
 				estado: "enviando",
 				...(vistaPrevia ? { vistaPreviaLocal: vistaPrevia } : {}),
@@ -114,8 +118,12 @@ export function useEnviarMensaje(alFallar?: (mensaje: string) => void): UsoEnvio
 				if (archivo) {
 					setProgresoSubida(0)
 
-					const subido = await apiMensajes.subirAdjunto(salaId, archivo, (fraccion) =>
-						setProgresoSubida(fraccion),
+					const subido = await apiMensajes.subirAdjunto(
+						salaId,
+						archivo,
+						(fraccion) => setProgresoSubida(fraccion),
+						undefined,
+						duracionMs,
 					)
 
 					adjuntoId = subido.id
@@ -153,16 +161,25 @@ export function useEnviarMensaje(alFallar?: (mensaje: string) => void): UsoEnvio
 		async (mensaje: MensajeVista) => {
 			if (!mensaje.identificadorEnvio) return
 
+			// El adjunto no se puede recuperar aquí —los bytes ya no están en
+			// memoria—, así que un mensaje con archivo no se reintenta solo: antes se
+			// creía correcto reenviar el texto sin más, pero eso publicaba el mensaje
+			// sin la imagen y quien lo mandó ni se enteraba. Mejor no hacer nada y que
+			// la interfaz pida volver a adjuntarlo (ver `BurbujaMensaje.tsx`, que ya
+			// no ofrece «Reintentar» cuando el fallido llevaba adjunto).
+			if (mensaje.adjunto) {
+				alFallar?.("Ese mensaje llevaba un archivo: descártalo y vuelve a adjuntarlo para reenviarlo.")
+				return
+			}
+
 			const almacen = useAlmacenChat.getState()
 
-			// Se descarta el fallido y se vuelve a enviar. El adjunto no se puede
-			// recuperar —los bytes ya no están en memoria—, así que un mensaje con
-			// archivo hay que volver a componerlo.
+			// Se descarta el fallido y se vuelve a enviar.
 			almacen.descartarPendiente(mensaje.salaId, mensaje.identificadorEnvio)
 
 			await enviar({ salaId: mensaje.salaId, texto: mensaje.texto })
 		},
-		[enviar],
+		[enviar, alFallar],
 	)
 
 	const descartar = useCallback((mensaje: MensajeVista) => {
@@ -180,17 +197,20 @@ export function useEnviarMensaje(alFallar?: (mensaje: string) => void): UsoEnvio
  * Los datos reales —nombre saneado, tipo y dimensiones— los decide el servidor
  * al normalizar el archivo; esto solo sirve para dibujar algo entretanto.
  */
-function adjuntoProvisional(archivo: File): Adjunto {
+function adjuntoProvisional(archivo: File, duracionMs?: number): Adjunto {
 	const esImagen = archivo.type.startsWith("image/")
+	const esAudio = !esImagen && archivo.type.startsWith("audio/")
 
 	return {
 		id: "",
 		nombreArchivo: archivo.name,
 		tipoMime: archivo.type,
-		tipo: esImagen ? 1 : 0,
+		tipo: esImagen ? 1 : esAudio ? 2 : 0,
 		tamanoBytes: archivo.size,
 		ancho: null,
 		alto: null,
+		duracionMs: esAudio ? (duracionMs ?? null) : null,
 		esImagen,
+		esAudio,
 	}
 }

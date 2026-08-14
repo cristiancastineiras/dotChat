@@ -123,6 +123,7 @@ public sealed class PruebasRegistroDeManejadores
         servicios.AddSingleton(Substitute.For<ICifradorFlujo>());
         servicios.AddSingleton(Substitute.For<IAlmacenObjetos>());
         servicios.AddSingleton(Substitute.For<IProcesadorImagenes>());
+        servicios.AddSingleton(Substitute.For<IProcesadorAudio>());
         servicios.AddSingleton(Substitute.For<INotificadorTiempoReal>());
         servicios.AddSingleton(Substitute.For<IRegistroConexiones>());
         servicios.AddSingleton(Substitute.For<IProtectorRepeticion>());

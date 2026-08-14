@@ -2,7 +2,7 @@
 // USUARIOS, PRESENCIA Y FOTO DE PERFIL
 // ============================================================================
 
-import { api, descargarBlob, ejecutar } from "./cliente"
+import { api, descargarBlob, ejecutar, subirConProgreso } from "./cliente"
 
 import type { Guid, Perfil, Presencia, Usuario } from "@paquetes/modelos"
 
@@ -35,21 +35,9 @@ export async function subirAvatar(
 	const cuerpo = new FormData()
 	cuerpo.append("archivo", imagen, "avatar.jpg")
 
-	return await ejecutar(() =>
-		api
-			.post("usuarios/yo/avatar", {
-				body: cuerpo,
-				timeout: false,
-				...(alProgresar
-					? {
-							onUploadProgress: (progreso: { percent: number }) => {
-								alProgresar(progreso.percent)
-							},
-						}
-					: {}),
-			})
-			.json<Perfil>(),
-	)
+	// Por `XMLHttpRequest` y no por `api.post`: ver el porqué en
+	// `subirConProgreso`, en `cliente.ts`.
+	return await subirConProgreso<Perfil>("usuarios/yo/avatar", cuerpo, alProgresar)
 }
 
 /** Retira la foto de perfil y vuelve a las iniciales. */

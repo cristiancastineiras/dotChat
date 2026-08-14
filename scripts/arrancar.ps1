@@ -176,6 +176,7 @@ else {
 
 Write-Host ''
 Write-Host 'Puntos de entrada:' -ForegroundColor Cyan
+Write-Host '  - Cliente web            : http://localhost:3000'
 Write-Host '  - API / hub (por nginx) : http://localhost:8080'
 Write-Host '  - Consola MinIO          : http://localhost:9001  (minioadmin / minioadmin123)'
 Write-Host '  - Jaeger (trazas)        : http://localhost:16686'

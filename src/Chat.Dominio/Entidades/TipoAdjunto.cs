@@ -10,5 +10,8 @@ public enum TipoAdjunto
     Archivo = 0,
 
     /// <summary>Imagen validada y recodificada por el servidor.</summary>
-    Imagen = 1
+    Imagen = 1,
+
+    /// <summary>Nota de voz u otro audio grabado por el cliente.</summary>
+    Audio = 2
 }

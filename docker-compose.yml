@@ -98,6 +98,33 @@ services:
     networks: [dotchat]
 
   # ---------------------------------------------------------------------------
+  #  Cliente web
+  # ---------------------------------------------------------------------------
+  #  Build estático de la SPA (React + Vite) servido por su propio nginx, que
+  #  además reenvía /api y /hubs al balanceador de arriba: así el navegador
+  #  solo ve un origen y no hace falta CORS (ver src/Chat.Cliente.Web/nginx.conf).
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: src/Chat.Cliente.Web/Dockerfile
+    image: dotchat/web:local
+    container_name: dotchat-web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      nginx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [dotchat]
+
+  # ---------------------------------------------------------------------------
   #  PostgreSQL — la fuente de verdad
   # ---------------------------------------------------------------------------
   postgres:

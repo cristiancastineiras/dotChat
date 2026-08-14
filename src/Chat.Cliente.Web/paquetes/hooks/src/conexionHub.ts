@@ -13,6 +13,7 @@
 // ============================================================================
 
 import {
+	HttpTransportType,
 	HubConnection,
 	HubConnectionBuilder,
 	HubConnectionState,
@@ -83,6 +84,17 @@ function construir(): HubConnection {
 			// renovarse si hace falta: tras una suspensión larga, el token guardado
 			// llevará horas caducado.
 			accessTokenFactory: async () => (await obtenerTokenValido()) ?? "",
+
+			// Con varias réplicas detrás de un balanceador sin afinidad de sesión
+			// (nginx por round robin, ver docker-compose.yml), el "negotiate" de
+			// SignalR y la conexión real del transporte pueden caer en réplicas
+			// distintas: la segunda no conoce el id que negoció la primera y
+			// responde 404 ("No Connection with that ID"). Al saltar el negociado y
+			// usar solo WebSockets, toda la conversación va por una única petición
+			// HTTP (el upgrade), que se queda pinchada a una sola réplica durante
+			// toda la conexión. Mismo arreglo que en Chat.ClienteCli.
+			skipNegotiation: true,
+			transport: HttpTransportType.WebSockets,
 		})
 		.withAutomaticReconnect(new PoliticaReintento())
 		.configureLogging(configuracion.depurar ? LogLevel.Information : LogLevel.Warning)

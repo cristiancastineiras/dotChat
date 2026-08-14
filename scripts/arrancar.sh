@@ -120,6 +120,7 @@ fi
 
 echo
 echo "Puntos de entrada:"
+echo "  - Cliente web            : http://localhost:3000"
 echo "  - API / hub (por nginx) : http://localhost:8080"
 echo "  - Consola MinIO          : http://localhost:9001  (minioadmin / minioadmin123)"
 echo "  - Jaeger (trazas)        : http://localhost:16686"

@@ -61,8 +61,13 @@ public static class TiposMime
         // Audio y vídeo
         [".mp3"] = "audio/mpeg",
         [".ogg"] = "audio/ogg",
+        [".oga"] = "audio/ogg",
         [".wav"] = "audio/wav",
         [".m4a"] = "audio/mp4",
+        // Notas de voz grabadas en el navegador con MediaRecorder: ".webm" ya
+        // significa vídeo en esta tabla, así que las notas de voz usan una
+        // extensión propia para no chocar con él (ver GrabadorVoz.tsx).
+        [".weba"] = "audio/webm",
         [".mp4"] = "video/mp4",
         [".webm"] = "video/webm",
         [".mkv"] = "video/x-matroska"

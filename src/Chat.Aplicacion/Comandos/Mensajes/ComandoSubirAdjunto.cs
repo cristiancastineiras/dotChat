@@ -28,19 +28,28 @@ namespace Chat.Aplicacion.Comandos.Mensajes;
 /// <param name="NombreArchivo">Nombre original del fichero.</param>
 /// <param name="Contenido">Flujo con el contenido recibido.</param>
 /// <param name="TamanoDeclarado">Tamaño anunciado por el cliente, en bytes.</param>
+/// <param name="DuracionMsDeclarada">
+/// Duración en milisegundos, si quien sube declara que es una nota de voz. Solo se usa
+/// cuando el contenido resulta ser audio; en cualquier otro caso se ignora.
+/// </param>
 public sealed record ComandoSubirAdjunto(
     Guid UsuarioId,
     Guid SalaId,
     string NombreArchivo,
     Stream Contenido,
-    long TamanoDeclarado) : IComando<AdjuntoDto>;
+    long TamanoDeclarado,
+    long? DuracionMsDeclarada = null) : IComando<AdjuntoDto>;
 
 /// <summary>Manejador de <see cref="ComandoSubirAdjunto"/>.</summary>
 public sealed class ManejadorSubirAdjunto : IManejadorComando<ComandoSubirAdjunto, AdjuntoDto>
 {
+    /// <summary>Duración máxima de una nota de voz que se acepta como declarada, en milisegundos.</summary>
+    private const long DuracionMaximaMs = 30 * 60 * 1000;
+
     private readonly IRepositorioAdjuntos _adjuntos;
     private readonly IRepositorioSalas _salas;
     private readonly IProcesadorImagenes _procesador;
+    private readonly IProcesadorAudio _procesadorAudio;
     private readonly ICifradorFlujo _cifrador;
     private readonly IAlmacenObjetos _almacen;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
@@ -53,6 +62,7 @@ public sealed class ManejadorSubirAdjunto : IManejadorComando<ComandoSubirAdjunt
         IRepositorioAdjuntos adjuntos,
         IRepositorioSalas salas,
         IProcesadorImagenes procesador,
+        IProcesadorAudio procesadorAudio,
         ICifradorFlujo cifrador,
         IAlmacenObjetos almacen,
         IUnidadDeTrabajo unidadDeTrabajo,
@@ -63,6 +73,7 @@ public sealed class ManejadorSubirAdjunto : IManejadorComando<ComandoSubirAdjunt
         _adjuntos = adjuntos;
         _salas = salas;
         _procesador = procesador;
+        _procesadorAudio = procesadorAudio;
         _cifrador = cifrador;
         _almacen = almacen;
         _unidadDeTrabajo = unidadDeTrabajo;
@@ -97,6 +108,11 @@ public sealed class ManejadorSubirAdjunto : IManejadorComando<ComandoSubirAdjunt
         var nombre = ValidadorEntrada.ValidarNombreArchivo(comando.NombreArchivo);
         var esImagen = await _procesador.EsImagenAsync(comando.Contenido, cancelacion).ConfigureAwait(false);
 
+        // El audio no se recodifica —a diferencia de la imagen, se guarda tal cual—,
+        // así que solo hace falta reconocerlo cuando no es ya una imagen.
+        var esAudio = !esImagen
+            && await _procesadorAudio.EsAudioAsync(comando.Contenido, cancelacion).ConfigureAwait(false);
+
         var adjuntoId = Guid.CreateVersion7();
         var ahora = _reloj.Ahora;
         var clave = Adjunto.ConstruirClave(salaId, adjuntoId, ahora);
@@ -113,10 +129,11 @@ public sealed class ManejadorSubirAdjunto : IManejadorComando<ComandoSubirAdjunt
             UsuarioId = usuarioId,
             NombreArchivo = almacenado.Nombre,
             TipoMime = almacenado.TipoMime,
-            Tipo = esImagen ? TipoAdjunto.Imagen : TipoAdjunto.Archivo,
+            Tipo = esImagen ? TipoAdjunto.Imagen : esAudio ? TipoAdjunto.Audio : TipoAdjunto.Archivo,
             ClaveObjeto = clave,
             Ancho = almacenado.Ancho,
             Alto = almacenado.Alto,
+            DuracionMs = esAudio ? SanearDuracion(comando.DuracionMsDeclarada) : null,
             TamanoBytes = almacenado.Tamano,
             Huella = almacenado.Huella,
             FechaCreacion = ahora
@@ -248,6 +265,22 @@ public sealed class ManejadorSubirAdjunto : IManejadorComando<ComandoSubirAdjunt
         await _almacen
             .GuardarAsync(clave, cifrado, tamanoCifrado, tipoMime, cancelacion)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Acota la duración declarada por el cliente a un rango razonable. No es un dato
+    /// verificado —el servidor no descodifica el audio para comprobarlo—, así que lo
+    /// único que se puede hacer es descartar lo que sea absurdo.
+    /// </summary>
+    /// <param name="duracionMsDeclarada">Duración declarada por el cliente, si la hay.</param>
+    private static int? SanearDuracion(long? duracionMsDeclarada)
+    {
+        if (duracionMsDeclarada is not { } duracion || duracion <= 0 || duracion > DuracionMaximaMs)
+        {
+            return null;
+        }
+
+        return (int)duracion;
     }
 
     /// <summary>Retira un objeto sin dejar que un fallo al hacerlo tape el error original.</summary>

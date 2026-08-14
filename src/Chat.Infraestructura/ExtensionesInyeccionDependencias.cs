@@ -3,6 +3,7 @@ using Chat.Aplicacion.Opciones;
 using Chat.Dominio.Abstracciones;
 using Chat.Dominio.Entidades;
 using Chat.Infraestructura.Almacenamiento;
+using Chat.Infraestructura.Audio;
 using Chat.Infraestructura.Cache;
 using Chat.Infraestructura.Identidad;
 using Chat.Infraestructura.Imagenes;
@@ -161,6 +162,9 @@ public static class ExtensionesInyeccionDependencias
         // Sin estado propio más allá de las opciones: una sola instancia sirve a
         // todas las subidas concurrentes.
         servicios.AddSingleton<IProcesadorImagenes, ProcesadorImagenesImageSharp>();
+
+        // Sin estado en absoluto: solo compara bytes.
+        servicios.AddSingleton<IProcesadorAudio, ProcesadorAudioSniffer>();
 
         return servicios;
     }

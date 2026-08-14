@@ -22,6 +22,11 @@ public static class EndpointsAdjuntos
     /// <summary>Nombre del campo del formulario que transporta el fichero.</summary>
     private const string CampoArchivo = "archivo";
 
+    /// <summary>
+    /// Nombre del campo opcional con la duración de una nota de voz, en milisegundos.
+    /// </summary>
+    private const string CampoDuracionMs = "duracionMs";
+
     /// <summary>Registra el grupo <c>/api/adjuntos</c>.</summary>
     /// <param name="rutas">Constructor de rutas.</param>
     /// <returns>El mismo constructor, para encadenar llamadas.</returns>
@@ -93,12 +98,20 @@ public static class EndpointsAdjuntos
         // admite búsqueda y no consume memoria proporcional al tamaño.
         await using var contenido = archivo.OpenReadStream();
 
+        // Solo se usa si el contenido resulta ser audio (ver ManejadorSubirAdjunto); si
+        // no llega o no es un número, se sube igual y sin duración conocida.
+        long? duracionMs = formulario.TryGetValue(CampoDuracionMs, out var valorDuracion)
+            && long.TryParse(valorDuracion, out var duracionParseada)
+                ? duracionParseada
+                : null;
+
         var comando = new ComandoSubirAdjunto(
             principal.ObtenerUsuarioId(),
             salaId,
             archivo.FileName,
             contenido,
-            archivo.Length);
+            archivo.Length,
+            duracionMs);
 
         var adjunto = await despachador.EjecutarAsync(comando, cancelacion).ConfigureAwait(false);
 

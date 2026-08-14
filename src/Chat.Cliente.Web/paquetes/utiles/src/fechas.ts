@@ -167,6 +167,20 @@ export function formatearUltimaVez(valor: string | null | undefined): string {
 }
 
 /**
+ * Duración de un audio, en formato «m:ss» («1:05», «0:12»). Es la que se
+ * enseña en el reproductor de una nota de voz mientras graba y una vez enviada.
+ *
+ * @param milisegundos Duración en milisegundos.
+ */
+export function formatearDuracion(milisegundos: number): string {
+	const segundosTotales = Math.max(0, Math.round(milisegundos / 1000))
+	const minutos = Math.floor(segundosTotales / 60)
+	const segundos = segundosTotales % 60
+
+	return `${minutos}:${String(segundos).padStart(2, "0")}`
+}
+
+/**
  * Indica si dos instantes caen en el mismo día natural. Es lo que decide dónde
  * va cada separador de fecha del historial.
  *

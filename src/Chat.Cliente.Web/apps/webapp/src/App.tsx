@@ -56,7 +56,11 @@ export function App() {
 	return (
 		<ErrorBoundary FallbackComponent={PantallaFallo}>
 			<ConfigProvider theme={temaAntd} locale={esES}>
-				<AppAntd>
+				{/* Sin `className`, el `<div class="ant-app">` que antd interpone aquí no
+				    lleva altura ni flex propios: rompe la cadena de `height:100%` que baja
+				    desde `#root` y todo lo de dentro colapsa a su altura de contenido, que
+				    es lo que recortaba la ventana de chat por abajo. */}
+				<AppAntd className="flex h-full min-h-0 flex-col">
 					<QueryClientProvider client={clienteConsultas}>
 						<BrowserRouter>
 							<Rutas />

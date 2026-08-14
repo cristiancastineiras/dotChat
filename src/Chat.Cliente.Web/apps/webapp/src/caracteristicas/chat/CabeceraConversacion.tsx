@@ -76,7 +76,7 @@ export function CabeceraConversacion({ sala, alVolver }: Propiedades) {
 
 	return (
 		<>
-			<header className="h-cabecera border-borde flex shrink-0 items-center gap-3 border-b px-3">
+			<header className="h-cabecera shadow-cabecera bg-panel relative z-10 flex shrink-0 items-center gap-3 px-4">
 				{alVolver && (
 					<Button type="text" size="small" onClick={alVolver} aria-label="Volver">
 						<ArrowLeft className="h-4 w-4" />
@@ -92,13 +92,18 @@ export function CabeceraConversacion({ sala, alVolver }: Propiedades) {
 				/>
 
 				<div className="min-w-0 flex-1">
-					<h2 className="text-tinta flex items-center gap-1.5 truncate text-sm font-semibold">
+					<h2 className="text-tinta flex items-center gap-1.5 truncate text-[15px] font-semibold">
 						{!sala.esDirecta && (
 							<IconoSala tipo={sala.tipo} className="text-tinta-tenue shrink-0" />
 						)}
 						{sala.nombre}
 					</h2>
-					<p className="text-tinta-tenue truncate text-xs">{subtitulo}</p>
+					<p className="text-tinta-tenue truncate text-xs">
+						{sala.esDirecta && enLinea && (
+							<span className="bg-conectado mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" aria-hidden />
+						)}
+						{subtitulo}
+					</p>
 				</div>
 
 				{!sala.esDirecta && (

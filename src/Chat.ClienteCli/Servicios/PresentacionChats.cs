@@ -159,6 +159,8 @@ public static class PresentacionChats
         {
             { TipoAdjunto: Chat.Dominio.Entidades.TipoAdjunto.Imagen } =>
                 $"[mediumpurple2]🖼 {Presentacion.Escapar(ultimo.NombreAdjunto ?? "imagen")}[/]",
+            { TipoAdjunto: Chat.Dominio.Entidades.TipoAdjunto.Audio } =>
+                "[mediumpurple2]🎤 nota de voz[/]",
             { TipoAdjunto: Chat.Dominio.Entidades.TipoAdjunto.Archivo } =>
                 $"[mediumpurple2]📎 {Presentacion.Escapar(ultimo.NombreAdjunto ?? "archivo")}[/]",
             _ => $"[grey]{Presentacion.Escapar(EnUnaLinea(ultimo.Texto))}[/]"

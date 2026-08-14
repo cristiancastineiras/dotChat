@@ -106,12 +106,33 @@ export async function comoErrorApi(error: unknown): Promise<ErrorApi> {
 
 /** Construye el error a partir de la respuesta del servidor. */
 async function desdeRespuesta(respuesta: Response): Promise<ErrorApi> {
-	const estado = respuesta.status
+	let texto = ""
 
+	try {
+		texto = await respuesta.text()
+	} catch {
+		// Sin cuerpo que leer: el estado basta para dar un mensaje razonable.
+	}
+
+	return errorApiDesdeEstado(respuesta.status, texto)
+}
+
+/**
+ * Construye el error a partir de un estado HTTP y el cuerpo ya leído.
+ *
+ * Es lo mismo que hace {@link desdeRespuesta} a partir de un `Response` de
+ * `fetch`, pero para quien no tiene uno: la subida de adjuntos habla con
+ * `XMLHttpRequest` y no con `fetch` (ver `subirConProgreso` en `cliente.ts`),
+ * así que ya tiene el cuerpo como texto en la mano.
+ *
+ * @param estado Código de estado HTTP de la respuesta.
+ * @param cuerpoTexto Cuerpo de la respuesta, sin analizar todavía.
+ */
+export function errorApiDesdeEstado(estado: number, cuerpoTexto: string): ErrorApi {
 	let problema: ProblemDetails = {}
 
 	try {
-		problema = (await respuesta.json()) as ProblemDetails
+		if (cuerpoTexto) problema = JSON.parse(cuerpoTexto) as ProblemDetails
 	} catch {
 		// Un 502 de nginx o un 429 del limitador no traen cuerpo JSON. No es un
 		// problema: el código de estado basta para dar un mensaje razonable.

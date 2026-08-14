@@ -53,6 +53,14 @@ public class Adjunto
     /// <summary>Altura en píxeles; solo en las imágenes.</summary>
     public int? Alto { get; set; }
 
+    /// <summary>
+    /// Duración en milisegundos; sólo en el audio, y sólo si quien lo grabó la
+    /// declaró al subirlo. El servidor no descodifica el audio para calcularla —a
+    /// diferencia de una imagen, no hace falta para nada más—, así que es un dato
+    /// que se confía al cliente y se acota a un rango razonable, no uno verificado.
+    /// </summary>
+    public int? DuracionMs { get; set; }
+
     /// <summary>Tamaño en bytes del contenido en claro, antes de cifrarlo.</summary>
     public long TamanoBytes { get; set; }
 
@@ -70,6 +78,9 @@ public class Adjunto
 
     /// <summary>Indica si el contenido es una imagen que el cliente puede dibujar.</summary>
     public bool EsImagen => Tipo == TipoAdjunto.Imagen;
+
+    /// <summary>Indica si el contenido es un audio que el cliente puede reproducir.</summary>
+    public bool EsAudio => Tipo == TipoAdjunto.Audio;
 
     /// <summary>
     /// Construye la clave del objeto. Se reparte por sala y por fecha para que el

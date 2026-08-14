@@ -2,7 +2,7 @@
 // MENSAJES Y ADJUNTOS
 // ============================================================================
 
-import { api, descargarBlob, ejecutar } from "./cliente"
+import { api, descargarBlob, ejecutar, subirConProgreso } from "./cliente"
 import { configuracion } from "./configuracion"
 
 import type { Adjunto, Guid, Mensaje, SolicitudEnviarMensaje } from "@paquetes/modelos"
@@ -57,34 +57,26 @@ export async function enviar(solicitud: SolicitudEnviarMensaje): Promise<Mensaje
  * @param archivo Archivo elegido por el usuario.
  * @param alProgresar Notifica el avance, de 0 a 1.
  * @param senal Permite cancelar la subida.
+ * @param duracionMs Duración en milisegundos, si es una nota de voz grabada en el
+ *   cliente. El servidor la ignora si el contenido no resulta ser audio.
  */
 export async function subirAdjunto(
 	salaId: Guid,
 	archivo: File,
 	alProgresar?: (fraccion: number) => void,
 	senal?: AbortSignal,
+	duracionMs?: number,
 ): Promise<Adjunto> {
 	const cuerpo = new FormData()
 	cuerpo.append("archivo", archivo, archivo.name)
 
-	return await ejecutar(() =>
-		api
-			.post(`adjuntos?salaId=${salaId}`, {
-				body: cuerpo,
-				// Una subida no debe morir por el tiempo de espera de una consulta
-				// normal: veinte megas por una red lenta tardan más que eso.
-				timeout: false,
-				...(senal ? { signal: senal } : {}),
-				...(alProgresar
-					? {
-							onUploadProgress: (progreso: { percent: number }) => {
-								alProgresar(progreso.percent)
-							},
-						}
-					: {}),
-			})
-			.json<Adjunto>(),
-	)
+	if (duracionMs !== undefined) {
+		cuerpo.append("duracionMs", String(Math.round(duracionMs)))
+	}
+
+	// Por `XMLHttpRequest` y no por `api.post`: ver el porqué en
+	// `subirConProgreso`, en `cliente.ts`.
+	return await subirConProgreso<Adjunto>(`adjuntos?salaId=${salaId}`, cuerpo, alProgresar, senal)
 }
 
 /**

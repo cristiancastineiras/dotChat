@@ -89,10 +89,10 @@ export const BurbujaMensaje = memo(function BurbujaMensaje({
 					) : (
 						<div
 							className={cn(
-								"overflow-hidden rounded-2xl",
+								"shadow-burbuja overflow-hidden rounded-2xl",
 								esPropio
 									? "bg-marca-600 rounded-br-md text-white"
-									: "border-borde bg-panel-suave text-tinta rounded-bl-md border",
+									: "bg-panel text-tinta rounded-bl-md",
 								mensaje.estado === "fallido" && "opacity-60",
 							)}
 						>
@@ -135,15 +135,25 @@ export const BurbujaMensaje = memo(function BurbujaMensaje({
 				{/* Recuperación de un envío fallido */}
 				{mensaje.estado === "fallido" && (
 					<div className="mt-1 flex items-center gap-2 px-1">
-						<span className="text-[11px] text-red-700">No se ha podido enviar.</span>
-						<Button
-							type="link"
-							size="small"
-							className="!h-auto !p-0 !text-[11px]"
-							onClick={() => void alReintentar(mensaje)}
-						>
-							Reintentar
-						</Button>
+						<span className="text-[11px] text-red-700">
+							{mensaje.adjunto
+								? "No se ha podido enviar. Descarta y vuelve a adjuntar el archivo."
+								: "No se ha podido enviar."}
+						</span>
+
+						{/* Un mensaje con adjunto no ofrece «Reintentar»: los bytes del
+						    archivo ya no están en memoria y reintentar lo publicaría sin
+						    él, sin que quien lo mandó lo note (ver `useEnviarMensaje.ts`). */}
+						{!mensaje.adjunto && (
+							<Button
+								type="link"
+								size="small"
+								className="!h-auto !p-0 !text-[11px]"
+								onClick={() => void alReintentar(mensaje)}
+							>
+								Reintentar
+							</Button>
+						)}
 						<Button
 							type="link"
 							size="small"

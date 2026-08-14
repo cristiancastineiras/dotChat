@@ -25,7 +25,7 @@
 import ky, { type KyInstance, type Options } from "ky"
 
 import { MARGEN_RENOVACION_MS, configuracion } from "./configuracion"
-import { ErrorApi, comoErrorApi } from "./errores"
+import { ErrorApi, comoErrorApi, errorApiDesdeEstado } from "./errores"
 import { comoSesion, establecerSesion, obtenerSesion } from "./sesion"
 
 import type { RespuestaAutenticacion } from "@paquetes/modelos"
@@ -210,6 +210,93 @@ export async function ejecutar<T>(operacion: () => Promise<T>): Promise<T> {
 	} catch (error) {
 		throw await comoErrorApi(error)
 	}
+}
+
+/**
+ * Sube un archivo con progreso, por `XMLHttpRequest` y no por `ky`.
+ *
+ * `fetch()` solo sabe informar del avance de una subida si el cuerpo se manda
+ * como flujo (`ReadableStream` con `duplex: "half"`), que es justo lo que hace
+ * `ky` en cuanto se le pasa `onUploadProgress`. El problema es que los
+ * navegadores no dejan mandar un flujo así si la conexión no habla HTTP/2, y
+ * este servidor habla HTTP/1.1 en claro —tanto en desarrollo como en cualquier
+ * despliegue sin TLS delante—: la petición ni llega a salir y `fetch` falla con
+ * un «TypeError: Failed to fetch» sin más explicación, así que los adjuntos
+ * nunca llegaban a subir. `XMLHttpRequest` informa del avance de subida de
+ * forma nativa, sin necesitar ningún flujo, así que es lo único que usa esta
+ * función — el único sitio de la aplicación que necesita ese progreso.
+ *
+ * @param ruta Ruta relativa a la raíz de la API.
+ * @param cuerpo Formulario multiparte a enviar.
+ * @param alProgresar Notifica el avance, de 0 a 1.
+ * @param senal Permite cancelar la subida.
+ */
+export async function subirConProgreso<T>(
+	ruta: string,
+	cuerpo: FormData,
+	alProgresar?: (fraccion: number) => void,
+	senal?: AbortSignal,
+): Promise<T> {
+	return await ejecutar(async () => {
+		const token = await obtenerTokenValido()
+
+		return await new Promise<T>((resolve, reject) => {
+			const xhr = new XMLHttpRequest()
+			xhr.open("POST", `${RAIZ}${ruta}`)
+
+			if (token) {
+				xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+			}
+
+			if (alProgresar) {
+				xhr.upload.addEventListener("progress", (evento) => {
+					if (evento.lengthComputable) alProgresar(evento.loaded / evento.total)
+				})
+			}
+
+			xhr.addEventListener("load", () => {
+				if (xhr.status >= 200 && xhr.status < 300) {
+					try {
+						resolve(xhr.responseText ? (JSON.parse(xhr.responseText) as T) : (undefined as T))
+					} catch (error) {
+						reject(error)
+					}
+
+					return
+				}
+
+				// Igual que con el 401 del gancho de `api`: el cuerpo ya se ha enviado
+				// y no se puede repetir tal cual, así que aquí solo se renueva el
+				// token para que el siguiente intento del usuario funcione, no se
+				// reintenta esta misma subida.
+				if (xhr.status === 401) {
+					void renovarUnaVez()
+				}
+
+				reject(errorApiDesdeEstado(xhr.status, xhr.responseText))
+			})
+
+			xhr.addEventListener("error", () => {
+				reject(
+					new ErrorApi("No se ha podido contactar con el servidor. Comprueba que está levantado.", 0),
+				)
+			})
+
+			xhr.addEventListener("abort", () => {
+				reject(new ErrorApi("Subida cancelada.", 0))
+			})
+
+			if (senal) {
+				if (senal.aborted) {
+					xhr.abort()
+				} else {
+					senal.addEventListener("abort", () => xhr.abort(), { once: true })
+				}
+			}
+
+			xhr.send(cuerpo)
+		})
+	})
 }
 
 /**

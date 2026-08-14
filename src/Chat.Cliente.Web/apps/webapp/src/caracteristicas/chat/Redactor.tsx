@@ -20,7 +20,7 @@ import {
 	type EntradaEmoji,
 } from "@paquetes/utiles"
 import { Button, Progress, Tooltip } from "antd"
-import { Paperclip, Send, Smile, X } from "lucide-react"
+import { Mic, Paperclip, Send, Smile, X } from "lucide-react"
 import {
 	useCallback,
 	useEffect,
@@ -34,6 +34,7 @@ import {
 } from "react"
 import { toast } from "sonner"
 
+import { avisarSinMicrofono, GrabadorVoz } from "./GrabadorVoz"
 import { SelectorEmojis } from "./SelectorEmojis"
 
 import type { AdjuntoPendiente, Guid } from "@paquetes/modelos"
@@ -46,7 +47,12 @@ interface Propiedades {
 	nombreSala: string
 	/** Avance de la subida en curso, de 0 a 1. */
 	progresoSubida: number | null
-	alEnviar: (envio: { salaId: Guid; texto: string; archivo?: File | null }) => Promise<boolean>
+	alEnviar: (envio: {
+		salaId: Guid
+		texto: string
+		archivo?: File | null
+		duracionMs?: number
+	}) => Promise<boolean>
 }
 
 export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propiedades) {
@@ -55,6 +61,7 @@ export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propi
 	const [selectorAbierto, setSelectorAbierto] = useState(false)
 	const [arrastrando, setArrastrando] = useState(false)
 	const [enviando, setEnviando] = useState(false)
+	const [grabando, setGrabando] = useState(false)
 
 	const areaRef = useRef<HTMLTextAreaElement | null>(null)
 	const archivoRef = useRef<HTMLInputElement | null>(null)
@@ -69,6 +76,7 @@ export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propi
 			if (anterior?.vistaPrevia) URL.revokeObjectURL(anterior.vistaPrevia)
 			return null
 		})
+		setGrabando(false)
 	}, [salaId])
 
 	// La caja crece con el contenido hasta un tope. Se recalcula en cada cambio
@@ -226,6 +234,29 @@ export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propi
 		}
 	}, [texto, adjunto, enviando, alEnviar, salaId, quitarAdjunto])
 
+	// ---------------------------------------------------------------------
+	// Nota de voz
+	// ---------------------------------------------------------------------
+
+	const iniciarGrabacion = useCallback(() => {
+		if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+			avisarSinMicrofono()
+			return
+		}
+
+		setGrabando(true)
+	}, [])
+
+	const alEnviarVoz = useCallback(
+		async (archivo: File, duracionMs: number) => {
+			setGrabando(false)
+
+			const correcto = await alEnviar({ salaId, texto: "", archivo, duracionMs })
+			if (!correcto) areaRef.current?.focus()
+		},
+		[alEnviar, salaId],
+	)
+
 	function alPulsarTecla(evento: KeyboardEvent<HTMLTextAreaElement>) {
 		// El autocompletado se queda con las teclas de navegación mientras esté
 		// desplegado; si no, mover el cursor cerraría la lista.
@@ -266,7 +297,8 @@ export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propi
 		}
 	}
 
-	const puedeEnviar = (texto.trim().length > 0 || adjunto !== null) && !enviando
+	const hayContenido = texto.trim().length > 0 || adjunto !== null
+	const puedeEnviar = hayContenido && !enviando
 
 	return (
 		<div
@@ -277,13 +309,13 @@ export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propi
 			onDragLeave={() => setArrastrando(false)}
 			onDrop={alSoltar}
 			className={cn(
-				"relative rounded-xl border transition-colors",
+				"shadow-cabecera relative rounded-3xl border transition-colors",
 				arrastrando ? "border-marca-500 bg-marca-50" : "border-borde bg-panel",
 			)}
 		>
 			{/* Zona de arrastre */}
 			{arrastrando && (
-				<div className="bg-marca-50/90 text-marca-700 pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl text-sm font-medium">
+				<div className="bg-marca-50/90 text-marca-700 pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl text-sm font-medium">
 					Suelta el archivo para adjuntarlo
 				</div>
 			)}
@@ -351,65 +383,79 @@ export function Redactor({ salaId, nombreSala, progresoSubida, alEnviar }: Propi
 				</div>
 			)}
 
-			{/* Caja de escritura */}
-			<div className="flex items-end gap-1 p-1.5">
-				<Tooltip title="Adjuntar archivo">
-					<Button
-						type="text"
-						onClick={() => archivoRef.current?.click()}
-						aria-label="Adjuntar archivo"
+			{/* Caja de escritura, o el grabador de voz mientras se graba */}
+			{grabando ? (
+				<GrabadorVoz alEnviar={(archivo, duracionMs) => void alEnviarVoz(archivo, duracionMs)} alCancelar={() => setGrabando(false)} />
+			) : (
+				<div className="flex items-end gap-1 p-1.5">
+					<Tooltip title="Adjuntar archivo">
+						<Button
+							type="text"
+							shape="circle"
+							onClick={() => archivoRef.current?.click()}
+							aria-label="Adjuntar archivo"
+						>
+							<Paperclip className="text-tinta-suave h-4.5 w-4.5" />
+						</Button>
+					</Tooltip>
+
+					<input
+						ref={archivoRef}
+						type="file"
+						className="hidden"
+						onChange={alElegirArchivo}
+						aria-hidden
+						tabIndex={-1}
+					/>
+
+					<textarea
+						ref={areaRef}
+						value={texto}
+						onChange={(evento) => {
+							setTexto(evento.target.value)
+							avisarEscribiendo()
+						}}
+						onKeyDown={alPulsarTecla}
+						onPaste={alPegar}
+						rows={1}
+						placeholder={`Escribe en ${nombreSala}…`}
+						aria-label={`Mensaje para ${nombreSala}`}
+						className="desplazable text-tinta placeholder:text-tinta-tenue max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none"
+					/>
+
+					<SelectorEmojis
+						abierto={selectorAbierto}
+						alCambiarApertura={setSelectorAbierto}
+						alElegir={(emoji) => {
+							setTexto((actual) => actual + emoji)
+							areaRef.current?.focus()
+						}}
 					>
-						<Paperclip className="text-tinta-suave h-4.5 w-4.5" />
-					</Button>
-				</Tooltip>
+						<Button type="text" shape="circle" aria-label="Emojis">
+							<Smile className="text-tinta-suave h-4.5 w-4.5" />
+						</Button>
+					</SelectorEmojis>
 
-				<input
-					ref={archivoRef}
-					type="file"
-					className="hidden"
-					onChange={alElegirArchivo}
-					aria-hidden
-					tabIndex={-1}
-				/>
-
-				<textarea
-					ref={areaRef}
-					value={texto}
-					onChange={(evento) => {
-						setTexto(evento.target.value)
-						avisarEscribiendo()
-					}}
-					onKeyDown={alPulsarTecla}
-					onPaste={alPegar}
-					rows={1}
-					placeholder={`Escribe en ${nombreSala}…`}
-					aria-label={`Mensaje para ${nombreSala}`}
-					className="desplazable text-tinta placeholder:text-tinta-tenue max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none"
-				/>
-
-				<SelectorEmojis
-					abierto={selectorAbierto}
-					alCambiarApertura={setSelectorAbierto}
-					alElegir={(emoji) => {
-						setTexto((actual) => actual + emoji)
-						areaRef.current?.focus()
-					}}
-				>
-					<Button type="text" aria-label="Emojis">
-						<Smile className="text-tinta-suave h-4.5 w-4.5" />
-					</Button>
-				</SelectorEmojis>
-
-				<Button
-					type="primary"
-					disabled={!puedeEnviar}
-					loading={enviando}
-					onClick={() => void enviar()}
-					aria-label="Enviar mensaje"
-				>
-					{!enviando && <Send className="h-4 w-4" />}
-				</Button>
-			</div>
+					{hayContenido || enviando ? (
+						<Button
+							type="primary"
+							shape="circle"
+							disabled={!puedeEnviar}
+							loading={enviando}
+							onClick={() => void enviar()}
+							aria-label="Enviar mensaje"
+						>
+							{!enviando && <Send className="h-4 w-4" />}
+						</Button>
+					) : (
+						<Tooltip title="Grabar nota de voz">
+							<Button type="primary" shape="circle" onClick={iniciarGrabacion} aria-label="Grabar nota de voz">
+								<Mic className="h-4 w-4" />
+							</Button>
+						</Tooltip>
+					)}
+				</div>
+			)}
 		</div>
 	)
 }

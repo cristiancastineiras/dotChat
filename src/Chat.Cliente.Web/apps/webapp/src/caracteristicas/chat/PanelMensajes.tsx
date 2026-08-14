@@ -122,7 +122,9 @@ export function PanelMensajes({
 	}, [mensajes])
 
 	return (
-		<div className="relative min-h-0">
+		// Fondo distinto del resto de la ventana: es lo que hace que las burbujas
+		// blancas del interlocutor se lean sin necesidad de un borde alrededor.
+		<div className="bg-lienzo relative min-h-0">
 			<div
 				ref={referencia}
 				className="desplazable h-full overflow-y-auto px-4 py-3"

@@ -12,19 +12,7 @@ interface ImportMetaEnv {
 	readonly DEV: boolean
 	readonly PROD: boolean
 	readonly SSR: boolean
-	readonly VITE_ADJUNTO_MAX_MB: string
-	readonly VITE_API_TIMEOUT: string
-	readonly VITE_API_URL: string
-	readonly VITE_AVATAR_MAX_MB: string
-	readonly VITE_BASE_PATH: string
-	readonly VITE_DEBUG: string
-	readonly VITE_ENABLE_DEVTOOLS: string
-	readonly VITE_ESCRIBIENDO_MS: string
-	readonly VITE_HUB_URL: string
-	readonly VITE_MENSAJES_POR_PAGINA: string
-	readonly VITE_NOMBRE_APP: string
-	readonly VITE_SERVIDOR_URL: string
-	readonly VITE_VERSION: string
+
 }
 
 interface ImportMeta {
